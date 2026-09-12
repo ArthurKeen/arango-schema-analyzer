@@ -369,6 +369,34 @@ Schema-analyzer distinguishes between **physical shape** changes (which invalida
 
 Full **edge-interval time travel** for every conceptual entity (AOE-style `created`/`expired` on all versions) is **not** required for v0.1. If schema-analyzer outputs are **imported into AOE**, AOE’s temporal layer can own fine-grained history; this PRD still requires **run-level** and **fingerprint-level** provenance here so handoffs are auditable.
 
+**3.13.5. Bitemporal stamping (target — commissioned 2026-09-11)**
+
+> Commissioned by the CDF unified-architecture paper
+> (`contextual-data-fabric/docs/research/unified-ontology-mapping-architecture.md`,
+> Q-3 answered by AK: the downstream schema and mapping planes are **bitemporal**).
+> Twin requirement for the relational side: `relational-schema-analyzer/docs/DESIGN-ADDENDUM-bitemporal.md`.
+> Status: **not shipped**. This is a *recording* requirement; §3.13.4 stands — the
+> analyzer still keeps no history and offers no time-travel queries.
+
+**Problem:** A downstream temporal store (AOE) will keep every physical-schema version on two intervals — **valid time** (when the definition was true of the database) and **transaction time** (when the store learned it). Transaction time is already stamped here (`analysisStartedAt` / `analysisCompletedAt`, §3.13.1; CSI `provenance.generatedAt`). Valid time is not, and it can only be captured at introspection: nothing downstream can recover when a collection or index actually changed. ArangoDB exposes **no DDL timestamps** — collection and index properties carry none — so the analyzer cannot read a catalog date the way a relational introspector can. What it *can* do is bound valid time from the fingerprints it already computes.
+
+| Element | Requirement |
+|---|---|
+| **Transaction time is mandatory** | `analysisCompletedAt` MUST be present on every result and on every CSI document (`provenance.generatedAt`); today it is optional. `transactionTime` is emitted as an explicit alias so consumers need not know the analyzer's field names. |
+| **Valid time** | Every result and CSI document carries `validTime: {from}` and `validTimeSource`. With no prior run, `validTime.from = analysisCompletedAt` and `validTimeSource = observed`. `validTime.to` is never set by the analyzer; closing a version is the temporal store's job. |
+| **Fingerprint-continuity lower bound** | When the caller supplies a prior run's metadata (as `analyze_incremental` already accepts, §3.13.3) and the prior **shape fingerprint** equals the current one, `validTime.from` MUST be carried back to the earliest run in the unbroken chain, with `validTimeSource = fingerprint-continuity`. This is the collection-level analogue of `carry_forward_first_seen` (§3.13.2) and is the analyzer's only source of valid time stronger than observation. A `stats_changed` state (counts moved, shape did not) preserves the chain; a `shape_changed` state resets it to `observed`. |
+| **Predecessor linkage** | `predecessorFingerprint` = the prior run's shape fingerprint when a prior run was supplied, so a consumer can link versions without diffing. |
+| **Element-level stamps unchanged** | `firstSeenAt` / `lastValidatedAt` (§3.13.2) are transaction-time stamps and remain so. No element-level valid time is required: ArangoDB offers no per-field DDL signal, so collection-level granularity is the honest ceiling. |
+| **Emission** | Additive keys in the tool-contract v1 `metadata` and in CSI (`provenance.transactionTime`, `provenance.validTime`, `provenance.validTimeSource`, `provenance.predecessorFingerprint`). v1 consumers are unaffected; the CSI JSON Schema gains the keys as optional in a minor revision (CSI v1.1 in CDF's terms). `generatedAt` stays. |
+| **Redaction** | The new keys are timestamps and hashes; §4.3 redaction is unaffected. |
+
+**Acceptance:**
+
+- Fresh analysis, no prior → `validTimeSource == observed`, `validTime.from == analysisCompletedAt`.
+- `analyze_incremental` with an equal shape fingerprint dated T0 → `validTime.from == T0`, source `fingerprint-continuity`, `predecessorFingerprint` set; chained across three unchanged runs → still T0.
+- `shape_changed` → source resets to `observed`, `predecessorFingerprint` = prior shape fingerprint.
+- `validate_csi` passes for documents with and without the new provenance keys.
+
 ---
 
 ### **4. Non-Functional Requirements**

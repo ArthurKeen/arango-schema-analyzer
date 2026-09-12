@@ -2,7 +2,20 @@
 
 ## Unreleased
 
-(no changes)
+### Added
+- **Bitemporal stamping (PRD §3.13.5).** Every result and CSI document now carries both
+  clocks the downstream temporal store (AOE) needs: **transaction time**
+  (`metadata.transactionTime` / CSI `provenance.transactionTime`, an explicit alias of the
+  now-always-present `analysisCompletedAt`) and **valid time** (`validTime.from` +
+  `validTimeSource`). ArangoDB exposes no DDL timestamps, so `validTime.from` is bounded from
+  fingerprint continuity: `observed` (this run's completion) with no prior; carried back to the
+  earliest run whose shape fingerprint matches (`fingerprint-continuity`) when a prior run is
+  threaded through `analyze_incremental` (`unchanged` / `stats_changed` preserve the chain,
+  `shape_changed` resets to `observed`). `predecessorFingerprint` links versions. `validTime.to`
+  is never set here (the temporal store closes intervals). Additive and backward-compatible:
+  v1 tool-contract consumers are unaffected; the CSI schema gains the keys as optional. New
+  `provenance.compute_valid_time` / `prior_valid_from`. Converged with the
+  `relational-schema-analyzer` twin. Commissioned by the CDF unified-architecture paper.
 
 ## 0.12.1 — 2026-08-21
 

@@ -375,8 +375,17 @@ Full **edge-interval time travel** for every conceptual entity (AOE-style `creat
 > (`contextual-data-fabric/docs/research/unified-ontology-mapping-architecture.md`,
 > Q-3 answered by AK: the downstream schema and mapping planes are **bitemporal**).
 > Twin requirement for the relational side: `relational-schema-analyzer/docs/DESIGN-ADDENDUM-bitemporal.md`.
-> Status: **not shipped**. This is a *recording* requirement; §3.13.4 stands — the
+> Status: **shipped** (2026-09-12). This is a *recording* requirement; §3.13.4 stands — the
 > analyzer still keeps no history and offers no time-travel queries.
+> **Implementation**: `provenance.compute_valid_time` / `prior_valid_from`; stamped by
+> `analyzer._stamp_metadata` (`observed`, non-incremental path) and the
+> `analyze_incremental` / `incremental.refresh_statistics` change-state branches
+> (`fingerprint-continuity` on `unchanged` / `stats_changed`, reset to `observed` on
+> `shape_changed`). Emitted additively on result `metadata`
+> (`transactionTime` / `validTime` / `validTimeSource` / `predecessorFingerprint`) and in
+> CSI `provenance` via `csi.build_provenance`; the CSI schema declares the keys as optional
+> (`csi/v1/csi.schema.json`). `analysisCompletedAt` / `transactionTime` are now stamped on
+> every result.
 
 **Problem:** A downstream temporal store (AOE) will keep every physical-schema version on two intervals — **valid time** (when the definition was true of the database) and **transaction time** (when the store learned it). Transaction time is already stamped here (`analysisStartedAt` / `analysisCompletedAt`, §3.13.1; CSI `provenance.generatedAt`). Valid time is not, and it can only be captured at introspection: nothing downstream can recover when a collection or index actually changed. ArangoDB exposes **no DDL timestamps** — collection and index properties carry none — so the analyzer cannot read a catalog date the way a relational introspector can. What it *can* do is bound valid time from the fingerprints it already computes.
 

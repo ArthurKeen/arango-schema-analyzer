@@ -34,6 +34,18 @@ class AnalysisMetadata(BaseModel):
     # a full snapshot — see schema_analyzer.incremental.
     shape_fingerprint: str | None = Field(default=None, alias="shapeFingerprint")
     counts_fingerprint: str | None = Field(default=None, alias="countsFingerprint")
+    # Bitemporal stamping (PRD §3.13.5). Transaction time is when we learned the
+    # schema (an explicit alias of ``analysis_completed_at`` so consumers need not
+    # know field names); valid time is when the definition became true. ArangoDB
+    # exposes no DDL timestamps, so ``valid_time.from`` is bounded from fingerprint
+    # continuity across incremental runs: ``observed`` (= this run's completion) with
+    # no prior, ``fingerprint-continuity`` (carried back to the earliest run whose
+    # shape fingerprint matches) when a prior run is supplied. ``valid_time.to`` is
+    # never set here — closing a version is the downstream temporal store's job.
+    transaction_time: str | None = Field(default=None, alias="transactionTime")
+    valid_time: dict[str, Any] | None = Field(default=None, alias="validTime")
+    valid_time_source: str | None = Field(default=None, alias="validTimeSource")
+    predecessor_fingerprint: str | None = Field(default=None, alias="predecessorFingerprint")
     # Set by the incremental path (schema_analyzer.incremental): "unchanged"
     # (returned prior as-is), "stats_only" (recomputed only statistics), or
     # absent for a full analysis.

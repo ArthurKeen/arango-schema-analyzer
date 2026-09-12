@@ -77,6 +77,26 @@ def build_provenance(
     confidence = _meta_get(meta, "confidence")
     if isinstance(confidence, (int, float)):
         prov["confidence"] = confidence
+    # Bitemporal stamping (PRD §3.13.5). transactionTime is mandatory (an explicit
+    # alias of the completion timestamp); validTime is always present, defaulting to
+    # observed-at-transaction when the analysis metadata predates §3.13.5, so CSI
+    # documents from older runs still carry the two clocks the temporal store needs.
+    tx = _meta_get(
+        meta, "transactionTime", "transaction_time", "analysisCompletedAt", "analysis_completed_at", "timestamp"
+    )
+    if isinstance(tx, str) and tx:
+        prov["transactionTime"] = tx
+    vt = _meta_get(meta, "validTime", "valid_time")
+    vts = _meta_get(meta, "validTimeSource", "valid_time_source")
+    if isinstance(vt, dict) and isinstance(vt.get("from"), str):
+        prov["validTime"] = {"from": vt["from"]}
+        prov["validTimeSource"] = vts if isinstance(vts, str) and vts else "observed"
+    elif isinstance(tx, str) and tx:
+        prov["validTime"] = {"from": tx}
+        prov["validTimeSource"] = "observed"
+    predecessor = _meta_get(meta, "predecessorFingerprint", "predecessor_fingerprint")
+    if isinstance(predecessor, str) and predecessor:
+        prov["predecessorFingerprint"] = predecessor
     return prov
 
 

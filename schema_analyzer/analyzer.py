@@ -55,7 +55,13 @@ from .incremental import (
     refresh_statistics,
 )
 from .mapping import PhysicalMapping
-from .provenance import annotate_provenance, carry_forward_first_seen, stamp_temporal_provenance
+from .provenance import (
+    annotate_provenance,
+    carry_forward_first_seen,
+    compute_valid_time,
+    prior_valid_from,
+    stamp_temporal_provenance,
+)
 from .providers import create_provider, get_default_model, get_provider_env_var
 from .quality import build_quality_block
 from .redaction import (
@@ -317,14 +323,27 @@ class AgenticSchemaAnalyzer:
         physical_fingerprint: str,
         cache_hit: bool,
     ) -> AnalysisMetadata:
+        completed = now_iso()
+        # Bitemporal stamping (PRD §3.13.5). This is the non-incremental path (no
+        # prior run threaded), so valid time is `observed` at completion; the
+        # incremental path (`analyze_incremental` / `refresh_statistics`) overrides
+        # with fingerprint-continuity when a prior run matches.
+        valid_time, valid_time_source, predecessor = compute_valid_time(
+            completed_at=completed,
+            current_shape_fingerprint=prov.shape_fingerprint,
+        )
         return meta.model_copy(
             update={
                 "run_id": prov.run_id,
                 "analysis_started_at": prov.started_at,
-                "analysis_completed_at": now_iso(),
+                "analysis_completed_at": completed,
+                "transaction_time": completed,
                 "physical_schema_fingerprint": physical_fingerprint,
                 "shape_fingerprint": prov.shape_fingerprint,
                 "counts_fingerprint": prov.counts_fingerprint,
+                "valid_time": valid_time,
+                "valid_time_source": valid_time_source,
+                "predecessor_fingerprint": predecessor,
                 "cache_hit": cache_hit,
                 "prompt_version": self.prompt_version,
             }
@@ -659,7 +678,14 @@ class AgenticSchemaAnalyzer:
                 {"conceptualSchema": result.conceptual_schema, "physicalMapping": result.physical_mapping},
                 {"conceptualSchema": pr.conceptual_schema, "physicalMapping": pr.physical_mapping},
             )
-            return result
+            # §3.13.5: the shape changed (or there was no prior fingerprint), so valid
+            # time stays `observed` (the full analysis already stamped it); record the
+            # predecessor shape fingerprint so consumers can link the two versions.
+            return AnalysisResult(
+                conceptual_schema=result.conceptual_schema,
+                physical_mapping=result.physical_mapping,
+                metadata=result.metadata.model_copy(update={"predecessor_fingerprint": pr.metadata.shape_fingerprint}),
+            )
         if status == CHANGE_STATS_CHANGED:
             return refresh_statistics(db, pr)
 
@@ -669,11 +695,23 @@ class AgenticSchemaAnalyzer:
         conceptual = copy.deepcopy(pr.conceptual_schema)
         physical = copy.deepcopy(pr.physical_mapping)
         stamp_temporal_provenance({"conceptualSchema": conceptual, "physicalMapping": physical}, now=completed)
+        # §3.13.5: shape fingerprint matches the prior run, so valid time is carried
+        # back along the unbroken chain (fingerprint-continuity).
+        valid_time, valid_time_source, predecessor = compute_valid_time(
+            completed_at=completed,
+            current_shape_fingerprint=pr.metadata.shape_fingerprint,
+            prior_shape_fingerprint=pr.metadata.shape_fingerprint,
+            prior_valid_from=prior_valid_from(pr.metadata),
+        )
         meta = pr.metadata.model_copy(
             update={
                 "incremental_refresh": "unchanged",
                 "cache_hit": True,
                 "analysis_completed_at": completed,
+                "transaction_time": completed,
+                "valid_time": valid_time,
+                "valid_time_source": valid_time_source,
+                "predecessor_fingerprint": predecessor,
             }
         )
         return AnalysisResult(

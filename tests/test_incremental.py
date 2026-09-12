@@ -202,3 +202,72 @@ def test_incremental_does_not_mutate_prior_timestamps():
     # ...result carries a (re)stamp and owns its own dict
     assert res.physical_mapping is not prior.physical_mapping
     assert isinstance(res.physical_mapping["entities"][ent_key]["lastValidatedAt"], str)
+
+
+# ── Bitemporal stamping (PRD §3.13.5) ────────────────────────────────────────
+
+_T0 = "2020-01-01T00:00:00Z"
+
+
+def _pin_valid_from(result, frm=_T0):
+    """Return a copy of ``result`` with an explicit older validTime.from, so the
+    carry-back is unambiguous regardless of wall-clock resolution."""
+    return AnalysisResult(
+        conceptual_schema=result.conceptual_schema,
+        physical_mapping=result.physical_mapping,
+        metadata=result.metadata.model_copy(update={"valid_time": {"from": frm}, "valid_time_source": "observed"}),
+    )
+
+
+def test_valid_time_fresh_analysis_is_observed():
+    res = AgenticSchemaAnalyzer().analyze_physical_schema(_FakeDB(), use_cache=False)
+    m = res.metadata
+    assert m.valid_time_source == "observed"
+    assert m.valid_time == {"from": m.analysis_completed_at}
+    assert m.transaction_time == m.analysis_completed_at
+    assert m.predecessor_fingerprint is None
+
+
+def test_valid_time_unchanged_carries_continuity():
+    db = _FakeDB()
+    prior = _pin_valid_from(_prior_result(db))
+    res = AgenticSchemaAnalyzer().analyze_incremental(db, prior=prior, use_cache=False)
+    assert res.metadata.incremental_refresh == "unchanged"
+    assert res.metadata.valid_time == {"from": _T0}
+    assert res.metadata.valid_time_source == "fingerprint-continuity"
+    assert res.metadata.predecessor_fingerprint == prior.metadata.shape_fingerprint
+    # transaction time still advances even though valid time is carried back
+    assert res.metadata.transaction_time == res.metadata.analysis_completed_at
+
+
+def test_valid_time_chain_three_unchanged_runs_stays_t0():
+    db = _FakeDB()
+    an = AgenticSchemaAnalyzer()
+    r1 = _pin_valid_from(_prior_result(db))
+    r2 = an.analyze_incremental(db, prior=r1, use_cache=False)
+    r3 = an.analyze_incremental(db, prior=r2, use_cache=False)
+    assert r3.metadata.valid_time == {"from": _T0}
+    assert r3.metadata.valid_time_source == "fingerprint-continuity"
+
+
+def test_valid_time_stats_changed_carries_continuity():
+    db = _FakeDB()
+    prior = _pin_valid_from(_prior_result(db))
+    db._cols["users"]._c = 999  # counts move, shape identical -> stats_changed
+    res = AgenticSchemaAnalyzer().analyze_incremental(db, prior=prior, use_cache=False)
+    assert res.metadata.incremental_refresh == "stats_only"
+    assert res.metadata.valid_time == {"from": _T0}
+    assert res.metadata.valid_time_source == "fingerprint-continuity"
+    assert res.metadata.predecessor_fingerprint == prior.metadata.shape_fingerprint
+
+
+def test_valid_time_shape_changed_resets_to_observed():
+    db = _FakeDB()
+    prior = _pin_valid_from(_prior_result(db))
+    prior_shape = prior.metadata.shape_fingerprint
+    db._cols["orgs"] = _Col(2, count=1)  # new collection -> shape_changed (full re-analysis)
+    res = AgenticSchemaAnalyzer().analyze_incremental(db, prior=prior, use_cache=False)
+    assert res.metadata.valid_time_source == "observed"
+    assert res.metadata.valid_time == {"from": res.metadata.analysis_completed_at}
+    assert res.metadata.valid_time["from"] != _T0
+    assert res.metadata.predecessor_fingerprint == prior_shape

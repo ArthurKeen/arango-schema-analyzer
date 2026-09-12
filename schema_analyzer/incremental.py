@@ -25,7 +25,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any
 
-from .provenance import stamp_temporal_provenance
+from .provenance import compute_valid_time, prior_valid_from, stamp_temporal_provenance
 from .snapshot import fingerprint_physical_counts, fingerprint_physical_shape
 from .statistics import STATISTICS_STATUS_SKIPPED_NO_DB, compute_statistics
 from .types import AnalysisMetadata, AnalysisResult, now_iso
@@ -132,11 +132,23 @@ def refresh_statistics(db: StandardDatabase, prior: AnalysisResult | dict[str, A
     conceptual = copy.deepcopy(pr.conceptual_schema)
     physical = copy.deepcopy(pr.physical_mapping)
     stamp_temporal_provenance({"conceptualSchema": conceptual, "physicalMapping": physical}, now=completed)
+    # §3.13.5: counts moved but shape did not, so the schema definition is unchanged —
+    # valid time is carried back along the unbroken chain (fingerprint-continuity).
+    valid_time, valid_time_source, predecessor = compute_valid_time(
+        completed_at=completed,
+        current_shape_fingerprint=pr.metadata.shape_fingerprint,
+        prior_shape_fingerprint=pr.metadata.shape_fingerprint,
+        prior_valid_from=prior_valid_from(pr.metadata),
+    )
     update: dict[str, Any] = {
         "analysis_completed_at": completed,
+        "transaction_time": completed,
         "counts_fingerprint": fingerprint_physical_counts(db),
         "incremental_refresh": "stats_only",
         "cache_hit": False,
+        "valid_time": valid_time,
+        "valid_time_source": valid_time_source,
+        "predecessor_fingerprint": predecessor,
     }
     if stats is not None:
         update["statistics"] = stats

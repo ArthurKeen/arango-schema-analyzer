@@ -162,3 +162,55 @@ def carry_forward_first_seen(data: dict[str, Any], prior: dict[str, Any]) -> Non
         inherited = prior_first_seen.get(key)
         if inherited is not None:
             element["firstSeenAt"] = inherited
+
+
+# ── Bitemporal valid time (PRD §3.13.5) ──────────────────────────────────────
+
+VALID_TIME_OBSERVED = "observed"
+VALID_TIME_CONTINUITY = "fingerprint-continuity"
+
+
+def compute_valid_time(
+    *,
+    completed_at: str,
+    current_shape_fingerprint: str | None,
+    prior_shape_fingerprint: str | None = None,
+    prior_valid_from: str | None = None,
+) -> tuple[dict[str, str], str, str | None]:
+    """Bound a schema version's valid-time-from (PRD §3.13.5).
+
+    ArangoDB exposes no DDL timestamps, so the earliest we can prove a definition
+    was true is bounded by fingerprint continuity across runs the caller threads
+    in (via ``analyze_incremental``). Returns ``(valid_time, source,
+    predecessor_fingerprint)`` where ``valid_time`` is ``{"from": <iso>}``:
+
+    * No prior run → ``from = completed_at``, source ``observed``, no predecessor.
+    * Prior run whose shape fingerprint EQUALS the current one (an unbroken chain —
+      the ``unchanged`` / ``stats_changed`` change-states) → ``from`` carried back
+      from the prior's valid-time-from (its own ``observed`` completion if it had
+      none), source ``fingerprint-continuity``, predecessor = the prior fingerprint.
+    * Prior run whose shape fingerprint DIFFERS (``shape_changed``) → the chain
+      resets: ``from = completed_at``, source ``observed``, predecessor = the prior
+      fingerprint (still recorded so consumers can link versions).
+
+    ``valid_time.to`` is never produced here — closing a version belongs to the
+    downstream temporal store.
+    """
+    if not prior_shape_fingerprint:
+        return {"from": completed_at}, VALID_TIME_OBSERVED, None
+    if prior_shape_fingerprint == current_shape_fingerprint:
+        carried = prior_valid_from or completed_at
+        return {"from": carried}, VALID_TIME_CONTINUITY, prior_shape_fingerprint
+    return {"from": completed_at}, VALID_TIME_OBSERVED, prior_shape_fingerprint
+
+
+def prior_valid_from(metadata: Any) -> str | None:
+    """The valid-time-from to carry forward from a prior run's metadata: its
+    ``validTime.from`` if present, else its transaction time (``analysisCompletedAt``)."""
+    vt = getattr(metadata, "valid_time", None)
+    if isinstance(vt, dict):
+        frm = vt.get("from")
+        if isinstance(frm, str):
+            return frm
+    completed = getattr(metadata, "analysis_completed_at", None)
+    return completed if isinstance(completed, str) else None

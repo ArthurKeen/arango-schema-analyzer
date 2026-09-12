@@ -152,3 +152,36 @@ def test_csi_tool_requires_analysis():
     resp = run_tool({"contractVersion": "1", "operation": "csi", "input": {}})
     assert resp["ok"] is False
     assert resp["error"]["code"] == "INVALID_REQUEST"
+
+
+# ── Bitemporal provenance (PRD §3.13.5) ──────────────────────────────────────
+
+
+def test_csi_provenance_bitemporal_keys_full():
+    """A §3.13.5-stamped analysis emits transactionTime + validTime + source + predecessor."""
+    analysis = json.loads(json.dumps(ANALYSIS))  # deep copy
+    analysis["metadata"].update(
+        {
+            "transactionTime": "2026-06-22T00:00:01Z",
+            "validTime": {"from": "2026-01-01T00:00:00Z"},
+            "validTimeSource": "fingerprint-continuity",
+            "predecessorFingerprint": "shape:prev",
+        }
+    )
+    prov = to_csi(analysis)["provenance"]
+    assert prov["transactionTime"] == "2026-06-22T00:00:01Z"
+    assert prov["validTime"] == {"from": "2026-01-01T00:00:00Z"}
+    assert prov["validTimeSource"] == "fingerprint-continuity"
+    assert prov["predecessorFingerprint"] == "shape:prev"
+    assert validate_csi(to_csi(analysis)) == []
+
+
+def test_csi_provenance_synthesizes_valid_time_for_older_metadata():
+    """Metadata predating §3.13.5 (no validTime) still gets both clocks: transactionTime
+    and an observed validTime derived from the completion timestamp."""
+    prov = to_csi(ANALYSIS)["provenance"]  # ANALYSIS has no validTime keys
+    assert prov["transactionTime"] == "2026-06-22T00:00:01Z"
+    assert prov["validTime"] == {"from": "2026-06-22T00:00:01Z"}
+    assert prov["validTimeSource"] == "observed"
+    assert "predecessorFingerprint" not in prov
+    assert validate_csi(to_csi(ANALYSIS)) == []

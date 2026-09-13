@@ -16,6 +16,13 @@
   v1 tool-contract consumers are unaffected; the CSI schema gains the keys as optional. New
   `provenance.compute_valid_time` / `prior_valid_from`. Converged with the
   `relational-schema-analyzer` twin. Commissioned by the CDF unified-architecture paper.
+- **Prior-run input on the tool contract + CLI.** `analysisOptions.priorRun` (an inline prior
+  analysis) routes `analyze` through `analyze_incremental`, and the CLI exposes `analyze
+  --prior-run FILE` (a saved result or its bare analysis). This is how a contract consumer
+  (e.g. CDF) obtains fingerprint-continuity valid time — previously reachable only via the
+  Python API. Declared in `request.schema.json` (both copies) so `additionalProperties: false`
+  doesn't reject it. Per-run bitemporal stamps are now also stripped from the filesystem cache
+  payload (they are re-stamped on every cache hit), matching the existing provenance-strip.
 
 ## 0.12.1 — 2026-08-21
 

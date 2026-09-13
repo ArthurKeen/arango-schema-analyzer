@@ -105,6 +105,10 @@
           "default": false,
           "description": "When detectForeignKeys is set, additionally confirm each candidate by sampling values against the target collection's keys (bounded probe budget). Off by default because it issues extra AQL; raises confidence and vetoes coincidental name matches."
         },
+        "priorRun": {
+          "type": "object",
+          "description": "A prior analysis ({conceptualSchema, physicalMapping, metadata}) enabling incremental analysis (PRD §3.13.3/§3.13.5). When present, `analyze` routes through analyze_incremental: it returns the prior annotated (or a stats-only refresh) when the shape fingerprint still matches and runs a full re-analysis otherwise. This is also how bitemporal valid time (§3.13.5) is carried back via fingerprint-continuity — unreachable through the contract without a prior run."
+        },
         "graphScope": {
           "type": "string",
           "minLength": 1,

@@ -283,15 +283,33 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             analyzer.discover_taxonomy = bool(analysis_options.get("discoverTaxonomy") or False)
             analyzer.measure_key_containment = bool(analysis_options.get("measureKeyContainment") or False)
 
-            analysis = analyzer.analyze_physical_schema(
-                db,
-                timeout_ms=int(analysis_options.get("timeoutMs") or DEFAULT_TIMEOUT_MS),
-                sample_limit_per_collection=sample_limit,
-                include_samples_in_snapshot=include_samples,
-                use_cache=bool(analysis_options.get("useCache", True)),
-                entity_strategy=raw_strategy or "auto",
-                _snapshot=snapshot,
-            )
+            # Prior-run input (PRD §3.13.5): an inline prior analysis
+            # ({conceptualSchema, physicalMapping, metadata}) routes `analyze`
+            # through `analyze_incremental`, so a contract consumer (e.g. CDF) can
+            # obtain fingerprint-continuity valid time — unreachable otherwise.
+            prior_run = analysis_options.get("priorRun")
+            if prior_run is not None and not isinstance(prior_run, dict):
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "analysisOptions.priorRun must be an object (a prior analysis with "
+                        "conceptualSchema/physicalMapping/metadata).",
+                    },
+                }
+
+            analyze_kwargs: dict[str, Any] = {
+                "timeout_ms": int(analysis_options.get("timeoutMs") or DEFAULT_TIMEOUT_MS),
+                "sample_limit_per_collection": sample_limit,
+                "include_samples_in_snapshot": include_samples,
+                "use_cache": bool(analysis_options.get("useCache", True)),
+                "entity_strategy": raw_strategy or "auto",
+                "_snapshot": snapshot,
+            }
+            if prior_run:
+                analysis = analyzer.analyze_incremental(db, prior=prior_run, **analyze_kwargs)
+            else:
+                analysis = analyzer.analyze_physical_schema(db, **analyze_kwargs)
 
             analysis_dict = {
                 "conceptualSchema": analysis.conceptual_schema,

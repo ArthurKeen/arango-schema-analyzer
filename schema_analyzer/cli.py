@@ -84,6 +84,17 @@ def _cmd_connect(args: argparse.Namespace) -> int:
 
     # analyze / docs / owl all need an analysis first.
     analyze_req: dict[str, Any] = {"contractVersion": "1", "operation": "analyze", "connection": conn}
+    prior_run_file = getattr(args, "prior_run", None)
+    if prior_run_file:
+        prior = json.loads(Path(prior_run_file).read_text(encoding="utf-8"))
+        # Accept either a saved tool response ({result: {analysis: …}}) or a bare analysis.
+        if (
+            isinstance(prior, dict)
+            and isinstance(prior.get("result"), dict)
+            and isinstance(prior["result"].get("analysis"), dict)
+        ):
+            prior = prior["result"]["analysis"]
+        analyze_req["analysisOptions"] = {"priorRun": prior}
     if getattr(args, "provider", None):
         llm: dict[str, Any] = {"provider": args.provider}
         if getattr(args, "model", None):
@@ -235,6 +246,13 @@ def main(argv: list[str] | None = None) -> int:
     analyze_p = sub.add_parser("analyze", help="Connect to a DB and print the analysis JSON.")
     _add_connection_args(analyze_p)
     _add_llm_args(analyze_p)
+    analyze_p.add_argument(
+        "--prior-run",
+        metavar="FILE",
+        help="Path to a prior analysis JSON (a saved `analyze` result, or its bare "
+        "{conceptualSchema,physicalMapping,metadata}) — routes through incremental "
+        "analysis so bitemporal valid time (§3.13.5) is carried back by fingerprint-continuity.",
+    )
 
     docs_p = sub.add_parser("docs", help="Connect to a DB, analyze, and print Markdown docs.")
     _add_connection_args(docs_p)

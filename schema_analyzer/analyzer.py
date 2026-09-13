@@ -90,6 +90,12 @@ _PROVENANCE_CACHE_STRIP = (
     "physical_schema_fingerprint",
     "cache_hit",
     "prompt_version",
+    # Per-run bitemporal stamps (§3.13.5) — re-stamped on every cache hit by
+    # _stamp_metadata, so they must not be frozen into the cached payload.
+    "transaction_time",
+    "valid_time",
+    "valid_time_source",
+    "predecessor_fingerprint",
 )
 
 

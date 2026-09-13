@@ -94,7 +94,7 @@ def _cmd_connect(args: argparse.Namespace) -> int:
             and isinstance(prior["result"].get("analysis"), dict)
         ):
             prior = prior["result"]["analysis"]
-        analyze_req["analysisOptions"] = {"priorRun": prior}
+        analyze_req["input"] = {"previousAnalysis": prior}
     if getattr(args, "provider", None):
         llm: dict[str, Any] = {"provider": args.provider}
         if getattr(args, "model", None):

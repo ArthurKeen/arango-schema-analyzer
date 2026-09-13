@@ -61,6 +61,8 @@ def test_run_tool_analyze_missing_password_env_var_returns_error(monkeypatch):
 
 
 # ── prior-run exposure through the v1 contract (PRD §3.13.5) ──────────────────
+# Reuses the pre-existing shared field `input.previousAnalysis` (also required by `diff`),
+# NOT a minted `analysisOptions.priorRun` — converged with relational-schema-analyzer.
 
 _BASE_ANALYZE = {
     "contractVersion": "1",
@@ -68,20 +70,29 @@ _BASE_ANALYZE = {
     "connection": {"url": "http://localhost:8529", "database": "db", "username": "root", "password": "x"},
 }
 
+# input.previousAnalysis is a strict $ref to AnalysisOutput, so it must be a full analysis.
+_VALID_PRIOR = {
+    "conceptualSchema": {"entities": [], "relationships": [], "properties": []},
+    "physicalMapping": {"entities": {}, "relationships": {}},
+    "metadata": {
+        "confidence": 0.1,
+        "timestamp": "2020-01-01T00:00:00Z",
+        "analyzedCollectionCounts": {"documentCollections": 0, "edgeCollections": 0},
+        "detectedPatterns": [],
+    },
+}
 
-def test_prior_run_is_accepted_by_the_request_schema():
-    # additionalProperties:false means an undeclared option is rejected at validation
-    # and unreachable through the contract — guard that priorRun is declared.
+
+def test_previous_analysis_is_accepted_on_analyze_by_the_request_schema():
+    # The prior-run field must be reachable through the contract; it's the pre-existing
+    # input.previousAnalysis, so no new key and additionalProperties:false doesn't reject it.
     from schema_analyzer.tool_contract_v1 import validate_request_v1
 
-    req = {
-        **_BASE_ANALYZE,
-        "analysisOptions": {"priorRun": {"conceptualSchema": {}, "physicalMapping": {}, "metadata": {}}},
-    }
+    req = {**_BASE_ANALYZE, "input": {"previousAnalysis": _VALID_PRIOR}}
     assert validate_request_v1(req) == []
 
 
-def test_run_tool_routes_prior_run_through_analyze_incremental(monkeypatch):
+def test_run_tool_routes_previous_analysis_through_analyze_incremental(monkeypatch):
     import schema_analyzer.tool as tool_mod
     from schema_analyzer.analyzer import AgenticSchemaAnalyzer
     from schema_analyzer.types import AnalysisMetadata, AnalysisResult
@@ -107,7 +118,7 @@ def test_run_tool_routes_prior_run_through_analyze_incremental(monkeypatch):
 
     def _fake_incremental(self, db, **kwargs):
         calls.append("incremental")
-        assert isinstance(kwargs.get("prior"), dict)  # the priorRun payload threaded through
+        assert isinstance(kwargs.get("prior"), dict)  # previousAnalysis threaded through
         return _fake_result()
 
     def _fake_full(self, db, **kwargs):
@@ -117,15 +128,14 @@ def test_run_tool_routes_prior_run_through_analyze_incremental(monkeypatch):
     monkeypatch.setattr(AgenticSchemaAnalyzer, "analyze_incremental", _fake_incremental)
     monkeypatch.setattr(AgenticSchemaAnalyzer, "analyze_physical_schema", _fake_full)
 
-    prior = {"conceptualSchema": {}, "physicalMapping": {}, "metadata": {}}
-    tool_mod.run_tool({**_BASE_ANALYZE, "analysisOptions": {"priorRun": prior}})
+    tool_mod.run_tool({**_BASE_ANALYZE, "input": {"previousAnalysis": _VALID_PRIOR}})
     tool_mod.run_tool(dict(_BASE_ANALYZE))
     assert calls == ["incremental", "full"]
 
 
-def test_run_tool_rejects_non_object_prior_run():
+def test_run_tool_rejects_malformed_previous_analysis():
     from schema_analyzer.tool import run_tool
 
-    resp = run_tool({**_BASE_ANALYZE, "analysisOptions": {"priorRun": "not-an-object"}})
+    resp = run_tool({**_BASE_ANALYZE, "input": {"previousAnalysis": "not-an-object"}})
     assert resp["ok"] is False
     assert resp["error"]["code"] == "INVALID_REQUEST"

@@ -283,20 +283,14 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             analyzer.discover_taxonomy = bool(analysis_options.get("discoverTaxonomy") or False)
             analyzer.measure_key_containment = bool(analysis_options.get("measureKeyContainment") or False)
 
-            # Prior-run input (PRD §3.13.5): an inline prior analysis
-            # ({conceptualSchema, physicalMapping, metadata}) routes `analyze`
-            # through `analyze_incremental`, so a contract consumer (e.g. CDF) can
-            # obtain fingerprint-continuity valid time — unreachable otherwise.
-            prior_run = analysis_options.get("priorRun")
-            if prior_run is not None and not isinstance(prior_run, dict):
-                return {
-                    "ok": False,
-                    "error": {
-                        "code": "INVALID_REQUEST",
-                        "message": "analysisOptions.priorRun must be an object (a prior analysis with "
-                        "conceptualSchema/physicalMapping/metadata).",
-                    },
-                }
+            # Prior-run input (PRD §3.13.5): `input.previousAnalysis` (the existing shared
+            # contract field, already used by `diff`) routes `analyze` through
+            # `analyze_incremental`, so a contract consumer (e.g. CDF) can obtain
+            # fingerprint-continuity valid time — unreachable otherwise. Reusing the
+            # pre-existing field rather than minting one keeps ASA/RSA/CDF converged.
+            raw_analyze_input = request.get("input")
+            prior_run = raw_analyze_input.get("previousAnalysis") if isinstance(raw_analyze_input, dict) else None
+            prior_run = prior_run if isinstance(prior_run, dict) else None
 
             analyze_kwargs: dict[str, Any] = {
                 "timeout_ms": int(analysis_options.get("timeoutMs") or DEFAULT_TIMEOUT_MS),

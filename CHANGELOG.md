@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+(no changes)
+
+## 0.13.0 — 2026-09-12
+
 ### Added
 - **Bitemporal stamping (PRD §3.13.5).** Every result and CSI document now carries both
   clocks the downstream temporal store (AOE) needs: **transaction time**

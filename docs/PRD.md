@@ -211,14 +211,16 @@ collection's keys. Both must be **declared in `request.schema.json`** as well as
 does not declare is rejected at validation and is unreachable through the contract even
 if the code reads it (see §4.7).
 
-`analysisOptions.priorRun` (an inline prior analysis — `{conceptualSchema, physicalMapping,
-metadata}`) routes `analyze` through `analyze_incremental` (§3.13.3): a stats-only refresh or
-the prior annotated when the shape fingerprint still matches, a full re-analysis otherwise. It
-is also how a contract consumer obtains **bitemporal fingerprint-continuity valid time**
-(§3.13.5) — unreachable through the contract without a prior run. The CLI exposes it as
+`input.previousAnalysis` (the pre-existing shared contract field — a prior analysis
+`{conceptualSchema, physicalMapping, metadata}`, already required by `diff`) routes `analyze`
+through `analyze_incremental` (§3.13.3): a stats-only refresh or the prior annotated when the
+shape fingerprint still matches, a full re-analysis otherwise. It is also how a contract
+consumer obtains **bitemporal fingerprint-continuity valid time** (§3.13.5) — unreachable
+through the contract without a prior run. Reusing the existing field (rather than minting a new
+one) keeps this project, `relational-schema-analyzer`, and CDF converged. The CLI exposes it as
 `analyze --prior-run FILE` (a saved `analyze` result or its bare analysis).
 
-**Implementation**: `tool.py` (entrypoint + `analysisOptions.entityStrategy` / `detectForeignKeys` / `sampleForeignKeyOverlap` validation/threading, `analysisOptions.priorRun` → `analyze_incremental`), `cli.py` (`analyze --prior-run FILE`), `tool_contract_v1.py` (schema loading and validation), `tool_contract/v1/request.schema.json` (`entityStrategy` enum, `detectForeignKeys` / `sampleForeignKeyOverlap` booleans, `priorRun` object).
+**Implementation**: `tool.py` (entrypoint + `analysisOptions.entityStrategy` / `detectForeignKeys` / `sampleForeignKeyOverlap` validation/threading, `input.previousAnalysis` → `analyze_incremental`), `cli.py` (`analyze --prior-run FILE` → `input.previousAnalysis`), `tool_contract_v1.py` (schema loading and validation), `tool_contract/v1/request.schema.json` (`input.previousAnalysis` already declared as an `AnalysisOutput`).
 
 #### **3.9. CLI**
 
@@ -478,7 +480,7 @@ Tunable defaults are centralized in `defaults.py`:
 
 #### **4.7. Tool contract fidelity**
 
-Fields in `docs/tool-contract/v1/request.schema.json` **must either be implemented** in `tool.py` / `AgenticSchemaAnalyzer` **or be explicitly marked deferred** in this PRD and in schema descriptions. Implemented: **`connection.verifyTls`** (maps to python-arango `verify_override`), **`analysisOptions.maxRepairAttempts`**, **`llm.systemPrompt`**, **`llm.promptVersion`** (participates in LLM cache key with the effective system prompt), **`domainContext`** (caller-supplied domain priors → `AgenticSchemaAnalyzer.domain_context`), **`analysisOptions.entityStrategy`** (`auto` | `collection`, validated in `tool.py` → `analyze_physical_schema(entity_strategy=…)`; see §3.4/§3.8), **`analysisOptions.detectForeignKeys`** / **`analysisOptions.sampleForeignKeyOverlap`** (booleans → `AgenticSchemaAnalyzer.detect_foreign_keys` / `sample_fk_overlap`; see §3.8/§6.2), **`analysisOptions.priorRun`** (an inline prior analysis → `analyze_incremental`, also the contract path to §3.13.5 fingerprint-continuity valid time; `--prior-run FILE` on the CLI), and redaction modes (`analysisOptions.redaction`). Drift between schema and code undermines agent workflows that rely on the contract — e.g. these two FK options were read by `tool.py` but absent from the schema, so with `additionalProperties: false` a request setting them was rejected at validation and the feature was unreachable through the contract until the schema declared them.
+Fields in `docs/tool-contract/v1/request.schema.json` **must either be implemented** in `tool.py` / `AgenticSchemaAnalyzer` **or be explicitly marked deferred** in this PRD and in schema descriptions. Implemented: **`connection.verifyTls`** (maps to python-arango `verify_override`), **`analysisOptions.maxRepairAttempts`**, **`llm.systemPrompt`**, **`llm.promptVersion`** (participates in LLM cache key with the effective system prompt), **`domainContext`** (caller-supplied domain priors → `AgenticSchemaAnalyzer.domain_context`), **`analysisOptions.entityStrategy`** (`auto` | `collection`, validated in `tool.py` → `analyze_physical_schema(entity_strategy=…)`; see §3.4/§3.8), **`analysisOptions.detectForeignKeys`** / **`analysisOptions.sampleForeignKeyOverlap`** (booleans → `AgenticSchemaAnalyzer.detect_foreign_keys` / `sample_fk_overlap`; see §3.8/§6.2), **`input.previousAnalysis`** (the pre-existing shared field, also required by `diff`, → `analyze_incremental`; the contract path to §3.13.5 fingerprint-continuity valid time; `--prior-run FILE` on the CLI), and redaction modes (`analysisOptions.redaction`). Drift between schema and code undermines agent workflows that rely on the contract — e.g. these two FK options were read by `tool.py` but absent from the schema, so with `additionalProperties: false` a request setting them was rejected at validation and the feature was unreachable through the contract until the schema declared them.
 
 ---
 

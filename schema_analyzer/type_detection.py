@@ -210,7 +210,7 @@ def _pick_best_type_field(
         if f not in tier1:
             continue
         if _tier1_coverage_ok(value_counts.get(f), total_docs, distinct_totals.get(f)):
-            return f
+            return str(f)
 
     best: str | None = None
     best_n = 0

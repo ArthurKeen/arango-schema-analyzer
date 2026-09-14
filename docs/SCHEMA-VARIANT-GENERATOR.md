@@ -87,7 +87,7 @@ found it. **Generate the degenerate cases deliberately.**
 ontology = Ontology.from_owl("account-taxonomy.ttl")
 
 for variant in generate_variants(ontology, target="arango", n=50, seed=1):
-    variant.materialize(db)                  # or emit a snapshot without a database
+    variant.materialize(db)  # or emit a snapshot without a database
     analysis = AgenticSchemaAnalyzer().analyze_physical_schema(db)
     score = compute_gold_comparison(analysis.conceptual_schema.to_json(), ontology.as_gold())
     assert score["f1"] >= threshold, variant.describe()

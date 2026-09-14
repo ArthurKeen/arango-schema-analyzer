@@ -39,12 +39,13 @@ export behaviours make the resulting entity labels fail to round-trip against th
 
 ```python
 # schema_analyzer/baseline.py
-ent_name = pascal_case(raw)                    # raw = "FIN_METRIC"  -> "FINMETRIC"
+ent_name = pascal_case(raw)  # raw = "FIN_METRIC"  -> "FINMETRIC"
+
 
 # schema_analyzer/utils.py
 def pascal_case(name: str) -> str:
     parts = [p for p in str(name).replace("-", "_").replace(" ", "_").split("_") if p]
-    return "".join(p[:1].upper() + p[1:] for p in parts) or "Unknown"   # collapses "_"
+    return "".join(p[:1].upper() + p[1:] for p in parts) or "Unknown"  # collapses "_"
 ```
 
 `pascal_case` is the right transform for turning a *collection name* into a conceptual label, but for
@@ -103,11 +104,12 @@ the downstream normalization heuristic).
 
 ```python
 from schema_analyzer import AgenticSchemaAnalyzer, export_mapping
+
 # analyze FinReflectKG (Node collection, type-discriminated), then:
 export = export_mapping(analysis, target="cypher")
 labels = set(export["physicalMapping"]["entities"])
-assert "FINMETRIC" in labels and "FIN_METRIC" not in labels   # #1: lossy rename
-assert "ORG_REG" not in labels                                # #2: dropped by top-20 cap
+assert "FINMETRIC" in labels and "FIN_METRIC" not in labels  # #1: lossy rename
+assert "ORG_REG" not in labels  # #2: dropped by top-20 cap
 ```
 
 ---

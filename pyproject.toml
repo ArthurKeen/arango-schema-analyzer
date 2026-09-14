@@ -60,8 +60,15 @@ mcp = ["mcp>=1.2.0"]
 dev = [
   "pytest>=8.0.0",
   "pytest-cov>=5.0.0",
-  "ruff>=0.4.0",
+  # Banded: CI installs the newest ruff and its formatter output moves between
+  # minors (0.15 -> 0.16 re-aligned trailing comments in five files). Keep local
+  # and CI on one minor so `ruff format --check` means the same thing in both.
+  "ruff>=0.16,<0.17",
   "mypy>=1.10.0",
+  # The taxonomy wiring tests (tests/test_relational_enrichment_wiring.py) assert
+  # discovery runs, so the dev environment must carry the optional dependency;
+  # without it CI reported `unavailable` on every run since 2026-08-12.
+  "conceptual-taxonomy>=0.1.1",
 ]
 
 [project.urls]
@@ -94,6 +101,10 @@ filterwarnings = [
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+# Shared-memory hook templates are copied in verbatim from arango-shared-memory and
+# linted there; linting the copies here fails CI on rules the template repo does not
+# enforce (SIM105, formatting) without any local way to fix them.
+extend-exclude = [".cursor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]

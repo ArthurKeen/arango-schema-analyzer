@@ -148,7 +148,7 @@ samplers, rather than inventing thresholds:
 paradigm-neutral in shape:
 
 ```python
-Sampler = Callable[[str, str, str, str], Optional[float]]   # → overlap ratio in [0,1], or None
+Sampler = Callable[[str, str, str, str], Optional[float]]  # → overlap ratio in [0,1], or None
 ```
 
 An `ArangoValueSampler` is a natural sixth implementation alongside the Postgres / MySQL /

@@ -100,7 +100,7 @@ from schema_analyzer import (
 )
 
 # At the top of schema_acquire.py (or wherever the cache key is built):
-shape_fp  = fingerprint_physical_shape(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
+shape_fp = fingerprint_physical_shape(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
 counts_fp = fingerprint_physical_counts(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
 ```
 

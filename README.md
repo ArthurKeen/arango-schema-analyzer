@@ -72,7 +72,7 @@ db = client.db("mydb", username="root", password="openSesame")
 
 analyzer = AgenticSchemaAnalyzer(
     llm_provider="openai",  # or "anthropic" or "openrouter"
-    api_key=None,           # e.g. os.environ["OPENAI_API_KEY"]
+    api_key=None,  # e.g. os.environ["OPENAI_API_KEY"]
     model="gpt-4o-mini",
     cache={"type": "filesystem", "directory": ".schema-analyzer-cache"},
 )

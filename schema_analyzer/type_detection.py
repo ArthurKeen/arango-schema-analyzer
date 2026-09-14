@@ -34,10 +34,41 @@ CANDIDATE_TYPE_KEYS: list[str] = [
     "entityType",
     "relation",
     "relType",
+    # Converged 2026-09-14 from arango-ontoextract's detector (CDF paper Q-5: the
+    # analyzer owns type detection; three detectors are becoming one).
+    "@type",
+    "entity_type",
+    "category",
+    "relationship",
+    "predicate",
 ]
 
-PREFERRED_DOC_TYPE_FIELDS: list[str] = ["type", "_type", "kind", "entityType", "label"]
-PREFERRED_EDGE_TYPE_FIELDS: list[str] = ["relation", "relType", "type"]
+PREFERRED_DOC_TYPE_FIELDS: list[str] = [
+    "type",
+    "_type",
+    "entityType",
+    "@type",
+    "entity_type",
+    "kind",
+    "category",
+    "label",
+]
+PREFERRED_EDGE_TYPE_FIELDS: list[str] = ["relation", "relType", "relationship", "predicate", "type"]
+
+#: Tier-1 discriminator names (converged from arango-ontoextract / arango-cypher-py).
+#: These names are unambiguously *type* fields, so they are accepted on **coverage
+#: alone**: a high distinct count (a rich graph with many entity types) must not
+#: disqualify them — that was the bug that collapsed a 40-type graph into one
+#: collection-named class. Tier-2 names (``label``, ``category``, ``kind`` …) can just
+#: as well hold a free-text display name, so they still pass the full distribution gate.
+TIER1_DOC_TYPE_FIELDS: tuple[str, ...] = ("type", "_type", "entityType", "@type", "entity_type")
+TIER1_EDGE_TYPE_FIELDS: tuple[str, ...] = ("type", "relation", "relationship", "relType", "predicate")
+
+#: Edge documents may carry their endpoint *types* directly (arango-cypher-py's
+#: ``GENERIC_WITH_TYPE`` convention), which lets endpoint resolution skip a per-edge
+#: ``DOCUMENT()`` lookup. Checked in preference order.
+EDGE_FROM_TYPE_FIELDS: tuple[str, ...] = ("_fromType", "fromType", "_from_type")
+EDGE_TO_TYPE_FIELDS: tuple[str, ...] = ("_toType", "toType", "_to_type")
 
 
 def infer_entity_type_from_collection_name(collection_name: str) -> str:
@@ -164,9 +195,22 @@ def _pick_best_type_field(
     )
     candidates = entry.get("candidate_type_fields") or []
     value_counts = entry.get("sample_field_value_counts") or {}
+    distinct_totals = entry.get("sample_field_distinct_counts") or {}
     total_docs = int(entry.get("count") or 0)
     preferred = PREFERRED_EDGE_TYPE_FIELDS if is_edge else PREFERRED_DOC_TYPE_FIELDS
+    tier1 = TIER1_EDGE_TYPE_FIELDS if is_edge else TIER1_DOC_TYPE_FIELDS
     ordered = [c for c in preferred if c in candidates] + [c for c in candidates if c not in preferred]
+
+    # Tier-1 rule (converged from arango-ontoextract): an unambiguous type-field
+    # name is accepted on coverage alone, in preference order, even when its true
+    # distinct total exceeds the acceptance bound. The top-K sampling still caps the
+    # *observed* values; ``entityTypeCaps`` / ``relationshipTypeCaps`` (or a raised
+    # ``max_entity_types``) report what the cap dropped.
+    for f in ordered:
+        if f not in tier1:
+            continue
+        if _tier1_coverage_ok(value_counts.get(f), total_docs, distinct_totals.get(f)):
+            return f
 
     best: str | None = None
     best_n = 0
@@ -188,6 +232,43 @@ def _pick_best_type_field(
             return single
 
     return None
+
+
+def _tier1_coverage_ok(items: Any, total_docs: int, distinct_total: Any) -> bool:
+    """Tier-1 acceptance: label-shaped string values, broadly present, ≥ 1 distinct.
+
+    Coverage is the observed count of the sampled values (top-K) plus nothing else, so
+    a field whose top-K covers less than ``MIN_TYPE_FIELD_COVERAGE_FRACTION`` of the
+    documents is accepted anyway when the snapshot reports a true distinct total larger
+    than the sample (the long tail explains the shortfall). The distinct upper bound is
+    deliberately *not* applied — that is the whole point of tier 1.
+    """
+    if not isinstance(items, list) or not items:
+        return False
+    observed = 0
+    distinct: set[str] = set()
+    for it in items:
+        if not isinstance(it, dict) or "value" not in it:
+            return False
+        v = it["value"]
+        if not isinstance(v, str) or len(v) > MAX_TYPE_VALUE_LENGTH or not _DISCRIMINATOR_VALUE_RE.match(v):
+            return False
+        distinct.add(v)
+        c = it.get("count")
+        if isinstance(c, int) and c > 0:
+            observed += c
+    # A single observed value is not tier-1 evidence: a dedicated PG edge collection
+    # often carries a redundant ``relation = "<collection name>"`` field, which the
+    # edge single-value fallback below judges on its own terms.
+    if len(distinct) < MIN_TYPE_FIELD_DISTINCT_VALUES and not (
+        isinstance(distinct_total, int) and distinct_total >= MIN_TYPE_FIELD_DISTINCT_VALUES
+    ):
+        return False
+    if total_docs <= 0 or observed <= 0:
+        return True
+    if observed / total_docs >= MIN_TYPE_FIELD_COVERAGE_FRACTION:
+        return True
+    return isinstance(distinct_total, int) and distinct_total > len(items)
 
 
 def _passes_distribution_shape(

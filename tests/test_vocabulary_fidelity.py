@@ -181,11 +181,13 @@ def _wide_snapshot_entry(n_values: int):
     }
 
 
-def test_raised_top_k_scales_discriminator_acceptance_bound():
+def test_tier1_type_field_is_accepted_regardless_of_distinct_count():
+    """Converged 2026-09-14 (CDF paper Q-5, step 4): ``type`` is a tier-1 name, so a
+    40-type graph is recognised as LPG at the default bound instead of collapsing to
+    one collection-named class. The top-K cap still limits the *observed* values on a
+    real snapshot; ``entityTypeCaps`` reports what it dropped."""
     entry = _wide_snapshot_entry(40)
-    # Default bound (32) rejects a 40-distinct-value field...
-    assert _pick_best_type_field(entry, is_edge=False) is None
-    # ...but a caller who asked for up to 50 entity types gets it accepted.
+    assert _pick_best_type_field(entry, is_edge=False) == "type"
     assert _pick_best_type_field(entry, is_edge=False, max_distinct_values=50) == "type"
 
     snapshot = {"version": 2, "sample_value_top_k": 50, "collections": [entry], "graphs": []}
@@ -193,10 +195,30 @@ def test_raised_top_k_scales_discriminator_acceptance_bound():
     assert len(out["physicalMapping"]["entities"]) == 40
 
 
-def test_default_bound_unchanged_without_raised_top_k():
-    snapshot = {"version": 2, "collections": [_wide_snapshot_entry(40)], "graphs": []}
+def _wide_tier2_snapshot_entry(n_values: int):
+    entry = _wide_snapshot_entry(n_values)
+    entry["candidate_type_fields"] = ["category"]
+    entry["sample_field_value_counts"] = {"category": entry["sample_field_value_counts"]["type"]}
+    return entry
+
+
+def test_raised_top_k_scales_acceptance_bound_for_tier2_fields():
+    """The distinct-count acceptance bound still governs tier-2 names (``category``,
+    ``label`` …), which may equally hold a display value: rejected at the default
+    bound, accepted when the caller raised ``max_entity_types``."""
+    entry = _wide_tier2_snapshot_entry(40)
+    assert _pick_best_type_field(entry, is_edge=False) is None
+    assert _pick_best_type_field(entry, is_edge=False, max_distinct_values=50) == "category"
+
+    snapshot = {"version": 2, "sample_value_top_k": 50, "collections": [entry], "graphs": []}
     out = infer_baseline_from_snapshot(snapshot)
-    # Field rejected as discriminator → falls back to one entity per collection.
+    assert len(out["physicalMapping"]["entities"]) == 40
+
+
+def test_default_bound_unchanged_for_tier2_without_raised_top_k():
+    snapshot = {"version": 2, "collections": [_wide_tier2_snapshot_entry(40)], "graphs": []}
+    out = infer_baseline_from_snapshot(snapshot)
+    # Tier-2 field rejected as discriminator → falls back to one entity per collection.
     assert list(out["physicalMapping"]["entities"]) == ["Node"]
 
 

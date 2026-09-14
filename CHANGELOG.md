@@ -4,6 +4,20 @@
 
 (no changes)
 
+## 0.13.1 — 2026-09-14
+
+### Changed
+- **CSI `provenance.validTimeSource` admits all five producer values.** The 0.13.0 schema
+  enumerated only the two values this analyzer emits (`observed`, `fingerprint-continuity`).
+  The relational twin (`relational-schema-analyzer` 0.8.0, `DESIGN-ADDENDUM-bitemporal.md`
+  §2.2) also emits `catalog`, `event` and `file`, and `r2g export-csi` validates against
+  this schema on write — so a catalog-dated Snowflake schema was rejected by the shared
+  contract. The enum is now `catalog | event | file | fingerprint-continuity | observed`,
+  strongest to weakest; this analyzer's own emission is unchanged. Converged with r2g 0.4.1,
+  which de-vendors this file (prefers the installed analyzer's copy) and tests for drift.
+- Dev extras: `conceptual-taxonomy` added (the taxonomy wiring tests require it); `ruff`
+  banded to 0.16; `.cursor` excluded from ruff. CI had been red on these since 2026-08-22.
+
 ## 0.13.0 — 2026-09-12
 
 ### Added

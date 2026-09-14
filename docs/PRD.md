@@ -96,7 +96,9 @@ normalization heuristics (see
 The system must automatically detect and classify physical schema patterns:
 
 - **PG (Property Graph):** Distinct vertex collections, no discriminator fields → `COLLECTION` / `DEDICATED_COLLECTION` mapping.
-- **LPG (Labeled Property Graph):** Generic node/edge collections with discriminator fields (`type`, `kind`, `label`, `relation`, `relType`) → `LABEL` / `GENERIC_WITH_TYPE` mapping.
+- **LPG (Labeled Property Graph):** Generic node/edge collections with discriminator fields (`type`, `_type`, `entityType`, `@type`, `entity_type`, `kind`, `category`, `label`; edges: `relation`, `relType`, `relationship`, `predicate`, `type`) → `LABEL` / `GENERIC_WITH_TYPE` mapping.
+
+**Type-detection ownership (2026-09-14, CDF unified-architecture paper Q-5).** This analyzer is the single owner of LPG type detection for the portfolio; `arango-ontoextract` and `arango-cypher-py` consume the `LABEL` / `GENERIC_WITH_TYPE` entries in CSI rather than re-detecting. Two tiers of candidate names: **tier-1** names (`type`, `_type`, `entityType`, `@type`, `entity_type`; edges `type`, `relation`, `relationship`, `relType`, `predicate`) are unambiguous and are accepted on coverage alone (≥ 2 observed values, broadly present), regardless of the distinct-count acceptance bound; **tier-2** names (`label`, `category`, `kind`, …) may hold a display value and must pass the full distribution gate. Edges carrying endpoint types directly (`_fromType` / `_toType` and variants) resolve per-relation domain/range without `DOCUMENT()` lookups.
 
 Detection uses candidate type field analysis from `sample_field_value_counts` in the snapshot.
 
@@ -114,7 +116,10 @@ transparent** (see `docs/cypher-vocabulary-fidelity-bug-report.md` issue #2):
 - Callers can raise the cap via `analyze_physical_schema(max_entity_types=…)`
   (sync + async) / `snapshot_physical_schema(sample_value_top_k=…)`; the
   discriminator acceptance bound (`MAX_TYPE_FIELD_DISTINCT_VALUES`) scales
-  with the raised cap. LLM-egress redaction masks the new snapshot keys the
+  with the raised cap. The bound governs **tier-2** discriminator names only; tier-1
+  names are accepted on coverage alone (see §3.7 type-detection ownership), so a rich
+  graph is mapped to its sampled top-K types with the rest reported in the caps rather
+  than collapsed to one class. LLM-egress redaction masks the new snapshot keys the
   same way as their top-K counterparts.
 
 For a labeled property graph whose full label vocabulary lives in a single

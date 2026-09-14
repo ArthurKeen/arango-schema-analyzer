@@ -39,7 +39,7 @@ jobs:
   build:
     name: Build sdist + wheel
     # Only the canonical repo publishes. The origin remote mirror-pushes tags to
-    # arango-solutions/arango-schema-extractor, which is NOT a registered PyPI
+    # arango-solutions/arango-schema-analyzer, which is NOT a registered PyPI
     # Trusted Publisher, so its upload would fail every release. Skipping here
     # cascades to the publish jobs (they `needs: build`), so the mirror is a
     # clean no-op instead of a recurring failure notification.

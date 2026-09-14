@@ -4,6 +4,70 @@
 
 (no changes)
 
+## 0.14.0 — 2026-09-14
+
+### Changed
+- **LPG type detection converged on the analyzer (CDF unified-architecture paper Q-5,
+  step 4).** Three detectors existed — this analyzer's, `arango-ontoextract`'s and
+  `arango-cypher-py`'s — and could give three answers to "what is the type field" for one
+  database. Ownership was decided as the analyzer's (AK, 2026-09-11); this release ports
+  what the other two had and this one lacked, so they can consume the CSI `LABEL` /
+  `GENERIC_WITH_TYPE` entries instead of re-detecting:
+  - **Tier-1 acceptance on coverage alone.** `type`, `_type`, `entityType`, `@type`,
+    `entity_type` (documents) and `type`, `relation`, `relationship`, `relType`,
+    `predicate` (edges) are unambiguous type names and are now accepted when broadly
+    present, regardless of the distinct-count acceptance bound — so a 40-type graph is
+    recognised as LPG at the default bound instead of collapsing to one collection-named
+    class. The bound (`MAX_TYPE_FIELD_DISTINCT_VALUES`, scaled by `max_entity_types`)
+    still governs tier-2 names (`label`, `category`, `kind`, …), which may equally hold a
+    display value. A single observed value is never tier-1 evidence (the dedicated-edge
+    `relation = "<collection>"` fallback is unchanged). **Behaviour change:** where the
+    0.13 contract rejected a `type` field with more than 32 distinct values at the default
+    bound, 0.14 accepts it and maps the sampled top-K values, reporting the rest in
+    `entityTypeCaps` / `relationshipTypeCaps` (or all of them under a raised cap /
+    full-label-set mode).
+  - **Candidate names** `@type`, `entity_type`, `category`, `relationship`, `predicate`
+    added to the allow-list and preference order.
+  - **Endpoint type fields on edges.** When sampled edges carry `_fromType` / `_toType`
+    (or `fromType` / `toType`, `_from_type` / `_to_type`), per-relation entity types are
+    resolved from those fields with one `COLLECT` and no `DOCUMENT()` lookups — and even
+    when the vertex collections have no detectable discriminator. The snapshot records
+    `edge_endpoints.endpoint_type_fields`.
+
+### Fixed
+- **Plain attributes no longer split a collection into per-value `LABEL` entities.** A
+  broadened (non-allow-listed) field name is probed as a discriminator only when it carries
+  a type-like token (`type`, `kind`, `class`, `category`, `label`) — `rel_kind`, `etype`,
+  `node_class` still qualify; `priority`, `name`, `mcc`, `amount`, `since`, `ip` and `role`
+  (an attribute of an edge, not its type) do not. Found by the Integration eval gate:
+  `financial_fraud_detection` predicted 23 entities against 7 gold (`cases.priority` →
+  `Priority0..4`, `customers.name` → `Name0..4`, …) and `seen_by.role` became ten relation
+  types. The regression dates from 0.3.x, when the reserved-word `COLLECT` fix made
+  discriminator queries run on ArangoDB 3.12 for the first time — the July baseline had
+  scored a detector that never executed.
+- **Eval runner analyses each fixture alone.** `run_eval` now drops every user graph and
+  collection before materialising the next fixture. Previously each fixture after the first
+  was scored together with its predecessors' collections (13, 18, 24, 28 predicted entities
+  against 6 gold, growing in run order), and the committed baseline had been recorded that way.
+- **`eval/baselines/ci_no_llm_baseline.json` regenerated** from the corrected runner and
+  detector (2026-09-14). Against the 2026-07-17 baseline no metric regresses; entity and
+  relationship F1 reach 1.00 on nine of ten fixtures and mapping-style accuracy on the
+  generic variants rises from 0.00 to 1.00. Future regressions are measured from here.
+
+## 0.13.1 — 2026-09-14
+
+### Changed
+- **CSI `provenance.validTimeSource` admits all five producer values.** The 0.13.0 schema
+  enumerated only the two values this analyzer emits (`observed`, `fingerprint-continuity`).
+  The relational twin (`relational-schema-analyzer` 0.8.0, `DESIGN-ADDENDUM-bitemporal.md`
+  §2.2) also emits `catalog`, `event` and `file`, and `r2g export-csi` validates against
+  this schema on write — so a catalog-dated Snowflake schema was rejected by the shared
+  contract. The enum is now `catalog | event | file | fingerprint-continuity | observed`,
+  strongest to weakest; this analyzer's own emission is unchanged. Converged with r2g 0.4.1,
+  which de-vendors this file (prefers the installed analyzer's copy) and tests for drift.
+- Dev extras: `conceptual-taxonomy` added (the taxonomy wiring tests require it); `ruff`
+  banded to 0.16; `.cursor` excluded from ruff. CI had been red on these since 2026-08-22.
+
 ## 0.13.0 — 2026-09-12
 
 ### Added

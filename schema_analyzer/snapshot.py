@@ -28,6 +28,8 @@ from .defaults import (
 )
 from .errors import SchemaAnalyzerError
 from .type_detection import (
+    EDGE_FROM_TYPE_FIELDS,
+    EDGE_TO_TYPE_FIELDS,
     _detect_candidate_type_fields,
     _pick_best_type_field,
     _type_values_for_field,
@@ -255,6 +257,38 @@ def _detect_observed_fields(
             return {}
 
 
+def _detect_edge_endpoint_type_fields(
+    db: StandardDatabase,
+    edge_collection_name: str,
+    *,
+    sample: int = 50,
+) -> tuple[str, str] | None:
+    """Return ``(from_field, to_field)`` when sampled edges carry endpoint types directly.
+
+    Both fields must be present on the sample (preference order in
+    ``EDGE_FROM_TYPE_FIELDS`` / ``EDGE_TO_TYPE_FIELDS``); otherwise ``None`` and the
+    caller falls back to ``DOCUMENT()`` or collection-name resolution.
+    """
+    try:
+        cursor = aql_execute(
+            db,
+            "FOR e IN @@c LIMIT @n RETURN ATTRIBUTES(e, true)",
+            bind_vars={"@c": edge_collection_name, "n": int(sample)},
+        )
+        present: set[str] = set()
+        for attrs in cursor:
+            if isinstance(attrs, list):
+                present.update(str(a) for a in attrs)
+    except Exception as exc:
+        logger.debug("could not sample %s for endpoint type fields: %s", edge_collection_name, exc)
+        return None
+    from_field = next((f for f in EDGE_FROM_TYPE_FIELDS if f in present), None)
+    to_field = next((f for f in EDGE_TO_TYPE_FIELDS if f in present), None)
+    if from_field and to_field:
+        return from_field, to_field
+    return None
+
+
 def _detect_edge_endpoints(
     db: StandardDatabase,
     edge_collection_name: str,
@@ -301,6 +335,51 @@ def _detect_edge_endpoints(
 
     if not rel_type_field:
         return result
+
+    # Strategy 0 (converged from arango-ontoextract, 2026-09-14): edges that carry
+    # their endpoint types directly (``_fromType`` / ``_toType`` …) resolve per-relation
+    # entity types with one COLLECT and no ``DOCUMENT()`` lookups — and they work even
+    # when the vertex collections have no detectable discriminator of their own.
+    endpoint_fields = _detect_edge_endpoint_type_fields(db, edge_collection_name)
+    if endpoint_fields is not None:
+        from_field, to_field = endpoint_fields
+        try:
+            cursor = aql_execute(
+                db,
+                "FOR e IN @@ec "
+                "COLLECT relType = e[@relField], "
+                "fromType = e[@fromField], "
+                "toType = e[@toField] "
+                "RETURN {relType: relType, fromType: fromType, toType: toType}",
+                bind_vars={
+                    "@ec": edge_collection_name,
+                    "relField": rel_type_field,
+                    "fromField": from_field,
+                    "toField": to_field,
+                },
+            )
+            direct: dict[str, dict[str, set[str]]] = {}
+            for item in cursor:
+                if not isinstance(item, dict) or not item.get("relType"):
+                    continue
+                rt_str = str(item["relType"])
+                direct.setdefault(rt_str, {"from": set(), "to": set()})
+                if item.get("fromType"):
+                    direct[rt_str]["from"].add(str(item["fromType"]))
+                if item.get("toType"):
+                    direct[rt_str]["to"].add(str(item["toType"]))
+            if direct:
+                result["entity_types_by_relation"] = {
+                    rt: {
+                        "from_entity_types": sorted(ep["from"]),
+                        "to_entity_types": sorted(ep["to"]),
+                    }
+                    for rt, ep in sorted(direct.items())
+                }
+                result["endpoint_type_fields"] = {"from": from_field, "to": to_field}
+                return result
+        except Exception as exc:
+            logger.debug("Endpoint-type-field resolution failed for %s: %s", edge_collection_name, exc)
 
     any_lpg_endpoint = any(c in doc_type_info for c in all_from_cols | all_to_cols)
 

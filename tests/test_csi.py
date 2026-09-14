@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from schema_analyzer.csi import (
     CSI_VERSION,
     from_csi,
@@ -174,6 +176,23 @@ def test_csi_provenance_bitemporal_keys_full():
     assert prov["validTimeSource"] == "fingerprint-continuity"
     assert prov["predecessorFingerprint"] == "shape:prev"
     assert validate_csi(to_csi(analysis)) == []
+
+
+@pytest.mark.parametrize("source", ["catalog", "event", "file", "fingerprint-continuity", "observed"])
+def test_csi_schema_admits_every_producer_valid_time_source(source):
+    """The CSI contract is shared with relational-schema-analyzer, whose connectors emit
+    catalog / event / file as well; the schema must admit every producer's vocabulary."""
+    analysis = json.loads(json.dumps(ANALYSIS))
+    analysis["metadata"].update(
+        {
+            "transactionTime": "2026-06-22T00:00:01Z",
+            "validTime": {"from": "2026-01-01T00:00:00Z"},
+            "validTimeSource": source,
+        }
+    )
+    doc = to_csi(analysis)
+    assert doc["provenance"]["validTimeSource"] == source
+    assert validate_csi(doc) == []
 
 
 def test_csi_provenance_synthesizes_valid_time_for_older_metadata():

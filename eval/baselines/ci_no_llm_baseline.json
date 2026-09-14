@@ -11,11 +11,11 @@
       },
       {
         "count": 10,
-        "gap": -0.3493,
+        "gap": -0.8825,
         "hi": 0.2,
         "lo": 0.1,
         "mean_confidence": 0.1,
-        "mean_quality": 0.4493
+        "mean_quality": 0.9825
       },
       {
         "count": 0,
@@ -82,19 +82,19 @@
         "mean_quality": null
       }
     ],
-    "brier": 0.1841,
+    "brier": 0.78,
     "current_review_threshold": 0.6,
-    "ece": 0.3493,
-    "gap": -0.3493,
-    "mce": 0.3493,
+    "ece": 0.8825,
+    "gap": -0.8825,
+    "mce": 0.8825,
     "mean_confidence": 0.1,
-    "mean_quality": 0.4493,
+    "mean_quality": 0.9825,
     "n": 10,
     "n_bins": 10,
     "quality_target": 0.7,
     "recommended_review_threshold": 0.1,
     "status": "ok",
-    "threshold_note": "maximizes Youden's J (0.000) vs quality_target=0.7"
+    "threshold_note": "all runs met quality_target; gate not discriminative"
   },
   "runs": [
     {
@@ -146,9 +146,9 @@
       "confidence": 0.1,
       "domain": "healthcare",
       "domain_range": {
-        "f1": 0.5000000000000001,
-        "precision": 0.36363636363636365,
-        "pred": 11,
+        "f1": 0.8000000000000002,
+        "precision": 0.8,
+        "pred": 5,
         "recall": 0.8,
         "truth": 5
       },
@@ -169,19 +169,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 13,
-          "pred_relationship_types": 11,
+          "pred_entities": 6,
+          "pred_relationship_types": 5,
           "truth_entities": 6,
           "truth_relationship_types": 5
         },
         "entities": {
-          "f1": 0.5263157894736842,
-          "precision": 0.38461538461538464,
+          "f1": 0.8333333333333334,
+          "precision": 0.8333333333333334,
           "recall": 0.8333333333333334
         },
         "relationships": {
-          "f1": 0.625,
-          "precision": 0.45454545454545453,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -191,9 +191,9 @@
       "confidence": 0.1,
       "domain": "insurance",
       "domain_range": {
-        "f1": 0.5217391304347826,
-        "precision": 0.35294117647058826,
-        "pred": 17,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 6,
         "recall": 1.0,
         "truth": 6
       },
@@ -214,19 +214,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 18,
-          "pred_relationship_types": 17,
+          "pred_entities": 6,
+          "pred_relationship_types": 6,
           "truth_entities": 6,
           "truth_relationship_types": 6
         },
         "entities": {
-          "f1": 0.5,
-          "precision": 0.3333333333333333,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         },
         "relationships": {
-          "f1": 0.5217391304347826,
-          "precision": 0.35294117647058826,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -236,9 +236,9 @@
       "confidence": 0.1,
       "domain": "intelligence",
       "domain_range": {
-        "f1": 0.37037037037037035,
-        "precision": 0.22727272727272727,
-        "pred": 22,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 5,
         "recall": 1.0,
         "truth": 5
       },
@@ -259,19 +259,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 24,
-          "pred_relationship_types": 22,
+          "pred_entities": 6,
+          "pred_relationship_types": 5,
           "truth_entities": 6,
           "truth_relationship_types": 5
         },
         "entities": {
-          "f1": 0.4,
-          "precision": 0.25,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         },
         "relationships": {
-          "f1": 0.37037037037037035,
-          "precision": 0.22727272727272727,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -281,10 +281,10 @@
       "confidence": 0.1,
       "domain": "network_asset_management",
       "domain_range": {
-        "f1": 0.24242424242424243,
-        "precision": 0.14814814814814814,
-        "pred": 27,
-        "recall": 0.6666666666666666,
+        "f1": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "pred": 6,
+        "recall": 0.8333333333333334,
         "truth": 6
       },
       "mapping_style": {
@@ -304,19 +304,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 28,
-          "pred_relationship_types": 27,
+          "pred_entities": 6,
+          "pred_relationship_types": 6,
           "truth_entities": 6,
           "truth_relationship_types": 6
         },
         "entities": {
-          "f1": 0.29411764705882354,
-          "precision": 0.17857142857142858,
+          "f1": 0.8333333333333334,
+          "precision": 0.8333333333333334,
           "recall": 0.8333333333333334
         },
         "relationships": {
-          "f1": 0.3636363636363636,
-          "precision": 0.2222222222222222,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -326,21 +326,21 @@
       "confidence": 0.1,
       "domain": "financial_fraud_detection",
       "domain_range": {
-        "f1": 0.35294117647058826,
-        "precision": 0.21428571428571427,
-        "pred": 28,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 6,
         "recall": 1.0,
         "truth": 6
       },
       "mapping_style": {
         "entities": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 7,
           "total": 7
         },
         "relationships": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         }
       },
@@ -349,19 +349,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 29,
-          "pred_relationship_types": 28,
+          "pred_entities": 7,
+          "pred_relationship_types": 6,
           "truth_entities": 7,
           "truth_relationship_types": 6
         },
         "entities": {
-          "f1": 0.3888888888888889,
-          "precision": 0.2413793103448276,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         },
         "relationships": {
-          "f1": 0.35294117647058826,
-          "precision": 0.21428571428571427,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -371,21 +371,21 @@
       "confidence": 0.1,
       "domain": "healthcare",
       "domain_range": {
-        "f1": 0.24242424242424243,
-        "precision": 0.14285714285714285,
-        "pred": 28,
-        "recall": 0.8,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 5,
+        "recall": 1.0,
         "truth": 5
       },
       "mapping_style": {
         "entities": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         },
         "relationships": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 5,
           "total": 5
         }
       },
@@ -394,19 +394,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 29,
-          "pred_relationship_types": 28,
+          "pred_entities": 6,
+          "pred_relationship_types": 5,
           "truth_entities": 6,
           "truth_relationship_types": 5
         },
         "entities": {
-          "f1": 0.28571428571428575,
-          "precision": 0.1724137931034483,
-          "recall": 0.8333333333333334
+          "f1": 1.0,
+          "precision": 1.0,
+          "recall": 1.0
         },
         "relationships": {
-          "f1": 0.30303030303030304,
-          "precision": 0.17857142857142858,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -416,21 +416,21 @@
       "confidence": 0.1,
       "domain": "insurance",
       "domain_range": {
-        "f1": 0.35294117647058826,
-        "precision": 0.21428571428571427,
-        "pred": 28,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 6,
         "recall": 1.0,
         "truth": 6
       },
       "mapping_style": {
         "entities": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         },
         "relationships": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         }
       },
@@ -439,19 +439,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 29,
-          "pred_relationship_types": 28,
+          "pred_entities": 6,
+          "pred_relationship_types": 6,
           "truth_entities": 6,
           "truth_relationship_types": 6
         },
         "entities": {
-          "f1": 0.34285714285714286,
-          "precision": 0.20689655172413793,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         },
         "relationships": {
-          "f1": 0.35294117647058826,
-          "precision": 0.21428571428571427,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -461,21 +461,21 @@
       "confidence": 0.1,
       "domain": "intelligence",
       "domain_range": {
-        "f1": 0.24242424242424243,
-        "precision": 0.14285714285714285,
-        "pred": 28,
-        "recall": 0.8,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 5,
+        "recall": 1.0,
         "truth": 5
       },
       "mapping_style": {
         "entities": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         },
         "relationships": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 5,
           "total": 5
         }
       },
@@ -484,19 +484,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 29,
-          "pred_relationship_types": 28,
+          "pred_entities": 6,
+          "pred_relationship_types": 5,
           "truth_entities": 6,
           "truth_relationship_types": 5
         },
         "entities": {
-          "f1": 0.34285714285714286,
-          "precision": 0.20689655172413793,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         },
         "relationships": {
-          "f1": 0.30303030303030304,
-          "precision": 0.17857142857142858,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },
@@ -506,21 +506,21 @@
       "confidence": 0.1,
       "domain": "network_asset_management",
       "domain_range": {
-        "f1": 0.23529411764705882,
-        "precision": 0.14285714285714285,
-        "pred": 28,
-        "recall": 0.6666666666666666,
+        "f1": 1.0,
+        "precision": 1.0,
+        "pred": 6,
+        "recall": 1.0,
         "truth": 6
       },
       "mapping_style": {
         "entities": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         },
         "relationships": {
-          "accuracy": 0.0,
-          "ok": 0,
+          "accuracy": 1.0,
+          "ok": 6,
           "total": 6
         }
       },
@@ -529,19 +529,19 @@
       "review_required": true,
       "score": {
         "counts": {
-          "pred_entities": 29,
-          "pred_relationship_types": 28,
+          "pred_entities": 6,
+          "pred_relationship_types": 6,
           "truth_entities": 6,
           "truth_relationship_types": 6
         },
         "entities": {
-          "f1": 0.28571428571428575,
-          "precision": 0.1724137931034483,
-          "recall": 0.8333333333333334
+          "f1": 1.0,
+          "precision": 1.0,
+          "recall": 1.0
         },
         "relationships": {
-          "f1": 0.35294117647058826,
-          "precision": 0.21428571428571427,
+          "f1": 1.0,
+          "precision": 1.0,
           "recall": 1.0
         }
       },

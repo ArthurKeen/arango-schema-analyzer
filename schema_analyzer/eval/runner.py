@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ..analyzer import AgenticSchemaAnalyzer
 from ..defaults import DEFAULT_EVAL_SAMPLE_LIMIT, DEFAULT_EVAL_SCALE, DEFAULT_TIMEOUT_MS, EVAL_DELTA_THRESHOLD
@@ -62,6 +62,12 @@ def run_eval(
             spec = load_domain_spec(domain_name)
             logger.info("Evaluating domain=%s variant=%s", domain_name, variant.name)
 
+            # Each fixture is scored against its own gold, so the database must hold
+            # only that fixture. Without this reset every fixture after the first was
+            # analysed together with its predecessors' collections (2026-09-14: 13, 18,
+            # 24, 28 predicted entities against 6 gold, growing in run order) — and the
+            # committed baseline had been recorded that way too.
+            _reset_eval_database(db)
             materialize_domain_variant(db, spec, variant, seed=1, scale=scale, create_graph=True)
 
             analysis = analyzer.analyze_physical_schema(
@@ -99,6 +105,20 @@ def run_eval(
             )
 
     return results
+
+
+def _reset_eval_database(db: StandardDatabase) -> None:
+    """Drop every user graph and collection so the next fixture is analysed alone."""
+    graphs = cast("list[dict[str, Any]]", db.graphs())
+    for graph in list(graphs):
+        name = graph.get("name") if isinstance(graph, dict) else None
+        if name:
+            db.delete_graph(name, ignore_missing=True, drop_collections=False)
+    collections = cast("list[dict[str, Any]]", db.collections())
+    for col in list(collections):
+        name = col.get("name") if isinstance(col, dict) else None
+        if name and not name.startswith("_"):
+            db.delete_collection(name, ignore_missing=True)
 
 
 def format_eval_table(results: list[EvalRunResult]) -> str:

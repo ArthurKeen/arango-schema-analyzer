@@ -107,6 +107,29 @@ def test_tier1_wins_over_tier2_in_preference_order() -> None:
     assert _pick_best_type_field(entry, is_edge=False) == "type"
 
 
+# ── Broadened candidates need a type-like token (eval-gate regression) ────────
+
+
+def test_plain_attributes_are_not_probed_as_discriminators() -> None:
+    """``cases.priority`` with five values is an attribute, not a type. Found by the eval
+    gate: once discriminator queries worked on 3.12, a dedicated collection was split into
+    one LABEL entity per value of every low-cardinality attribute (7 gold -> 23)."""
+    sample = {"_key": "1", "priority": "priority_0", "name": "name_2", "mcc": "mcc_1", "amount": "amount_4"}
+    assert _detect_candidate_type_fields(sample) == []
+
+
+def test_type_like_broadened_names_are_still_probed() -> None:
+    sample = {"_key": "1", "rel_kind": "OWNS", "etype": "Person", "node_class": "A", "priority": "p0"}
+    candidates = _detect_candidate_type_fields(sample)
+    assert set(candidates) == {"rel_kind", "etype", "node_class"}
+
+
+def test_edge_attributes_since_ip_and_role_are_not_relation_types() -> None:
+    """``seen_by.role`` with ten values is an attribute of the relationship, not its type."""
+    sample = {"_from": "a/1", "_to": "b/2", "since": "since_3", "ip": "ip_7", "role": "role_4"}
+    assert _detect_candidate_type_fields(sample) == []
+
+
 # ── Candidate names ──────────────────────────────────────────────────────────
 
 

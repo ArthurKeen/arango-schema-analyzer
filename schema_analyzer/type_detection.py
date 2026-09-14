@@ -81,6 +81,17 @@ def infer_relationship_type_from_collection_name(collection_name: str) -> str:
 
 
 _DISCRIMINATOR_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+#: A field name that is not on the allow-list is probed as a discriminator only when it
+#: carries a type-like token. ``rel_kind``, ``etype``, ``node_class`` qualify; ``priority``,
+#: ``name``, ``mcc``, ``amount``, ``since``, ``ip`` and ``role`` do not (``role`` on an
+#: edge is an attribute of the relationship, not its type — ``seen_by.role`` with ten
+#: values must stay one dedicated relationship). Without this, any short
+#: snake_case attribute holding a handful of label-shaped values split a dedicated
+#: collection into one LABEL entity per value (found by the eval regression gate:
+#: 7 gold entities became 23 on financial_fraud_detection once discriminator queries
+#: started working on ArangoDB 3.12 in 0.3.x; the July baseline had scored a detector
+#: that never ran).
+_TYPE_LIKE_TOKENS: tuple[str, ...] = ("type", "kind", "class", "category", "label")
 _DISCRIMINATOR_VALUE_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 # Names ending in any of these are (almost) certainly identifiers, not types.
 _ID_SUFFIXES: tuple[str, ...] = ("_id", "id", "_key", "key", "_uuid", "uuid", "_guid", "guid")
@@ -102,7 +113,9 @@ def _looks_like_discriminator_name(field: str) -> bool:
     lower = field.lower()
     if any(lower == suffix or lower.endswith(suffix) for suffix in _ID_SUFFIXES):
         return False
-    return bool(_DISCRIMINATOR_NAME_RE.match(field))
+    if not _DISCRIMINATOR_NAME_RE.match(field):
+        return False
+    return any(tok in lower for tok in _TYPE_LIKE_TOKENS)
 
 
 def _detect_candidate_type_fields(sample: dict[str, Any]) -> list[str]:

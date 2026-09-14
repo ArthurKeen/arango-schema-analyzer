@@ -34,6 +34,26 @@
     when the vertex collections have no detectable discriminator. The snapshot records
     `edge_endpoints.endpoint_type_fields`.
 
+### Fixed
+- **Plain attributes no longer split a collection into per-value `LABEL` entities.** A
+  broadened (non-allow-listed) field name is probed as a discriminator only when it carries
+  a type-like token (`type`, `kind`, `class`, `category`, `label`) — `rel_kind`, `etype`,
+  `node_class` still qualify; `priority`, `name`, `mcc`, `amount`, `since`, `ip` and `role`
+  (an attribute of an edge, not its type) do not. Found by the Integration eval gate:
+  `financial_fraud_detection` predicted 23 entities against 7 gold (`cases.priority` →
+  `Priority0..4`, `customers.name` → `Name0..4`, …) and `seen_by.role` became ten relation
+  types. The regression dates from 0.3.x, when the reserved-word `COLLECT` fix made
+  discriminator queries run on ArangoDB 3.12 for the first time — the July baseline had
+  scored a detector that never executed.
+- **Eval runner analyses each fixture alone.** `run_eval` now drops every user graph and
+  collection before materialising the next fixture. Previously each fixture after the first
+  was scored together with its predecessors' collections (13, 18, 24, 28 predicted entities
+  against 6 gold, growing in run order), and the committed baseline had been recorded that way.
+- **`eval/baselines/ci_no_llm_baseline.json` regenerated** from the corrected runner and
+  detector (2026-09-14). Against the 2026-07-17 baseline no metric regresses; entity and
+  relationship F1 reach 1.00 on nine of ten fixtures and mapping-style accuracy on the
+  generic variants rises from 0.00 to 1.00. Future regressions are measured from here.
+
 ## 0.13.1 — 2026-09-14
 
 ### Changed

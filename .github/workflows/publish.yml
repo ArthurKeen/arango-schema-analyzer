@@ -93,6 +93,11 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # A re-run for an already-published version (e.g. a manual dispatch to
+          # confirm Trusted Publishing works) is a no-op success instead of a
+          # "400 File already exists" failure. Real version bumps still publish.
+          skip-existing: true
 
   publish-testpypi:
     name: Publish to TestPyPI

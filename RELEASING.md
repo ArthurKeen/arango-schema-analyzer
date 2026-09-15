@@ -2,9 +2,19 @@
 
 This document describes how to cut a release and publish it to PyPI.
 
-The project uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+The project is set up for [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
 (OIDC), so no long-lived API tokens are stored in the repo. See
 `.github/workflows/publish.yml`.
+
+> **Current state (2026-09-15).** Trusted publishing is **broken since the repository was
+> renamed** (`arango-schema-mapper` → `arango-schema-analyzer`). Every tag-triggered run
+> since 2026-07-31 fails at "Publish to PyPI" with `invalid-publisher: valid token, but no
+> corresponding publisher`: the OIDC token now carries
+> `repository: ArthurKeen/arango-schema-analyzer`, while PyPI's publisher entry still names
+> the old repository. 0.13.x and 0.14.0 were uploaded with the local fallback
+> (`scripts/publish.sh`, below). To restore OIDC, re-add the publisher on PyPI with the
+> values in "One-time setup" and re-run `publish.yml` via *workflow_dispatch*; "file already
+> exists" for the current version is the success signal.
 
 ## One-time setup (PyPI side)
 
@@ -44,6 +54,8 @@ The project uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publish
 
 6. The tag push triggers `.github/workflows/publish.yml`, which builds the
    sdist + wheel, runs `twine check --strict`, and uploads to PyPI via OIDC.
+   Until the publisher is re-registered (see the note at the top) the upload step
+   fails; the build still runs, and the upload is done with `scripts/publish.sh`.
 7. Create a GitHub Release from the tag (optional but recommended) and paste
    the changelog section into the release notes.
 
@@ -76,11 +88,11 @@ This produces `dist/arangodb_schema_analyzer-<version>-py3-none-any.whl` and
 
 ## Local publish from `.env` (fallback)
 
-Trusted Publishing (OIDC) via the tag-triggered workflow is the recommended
-path and needs no credentials. If you prefer to publish from your machine
-(e.g. Trusted Publishing is unavailable, or the trusted-publisher config is
-mid-migration), use the helper script, which reads a PyPI API token from the
-gitignored `.env`:
+Trusted Publishing (OIDC) via the tag-triggered workflow is the intended path
+and needs no credentials. **It is the fallback that is in use today** (see the
+note at the top): until PyPI's publisher entry matches the renamed repository,
+publish from your machine with the helper script, which reads a PyPI API token
+from the gitignored `.env`:
 
 ```bash
 # .env (never committed — see .env.example):
@@ -120,3 +132,6 @@ Store the token in `~/.pypirc` **or** via the `TWINE_USERNAME=__token__` /
 - [ ] `python -c "import schema_analyzer; print(schema_analyzer.__all__)"` works
 - [ ] GitHub Release created with notes
 - [ ] `CHANGELOG.md` has an `Unreleased` section ready for the next round
+- [ ] The `publish.yml` run for the tag reached "Publish to PyPI" and succeeded — if it
+      failed with `invalid-publisher`, the PyPI publisher entry does not match this
+      repository's owner/name/workflow/environment; fix it on PyPI before the next tag

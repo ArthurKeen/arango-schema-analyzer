@@ -7,7 +7,7 @@
 **Language**: Python ≥ 3.10
 **Version**: tracked in `pyproject.toml` — see `CHANGELOG.md` for the current release
 
-**Companion codebase:** **Arango-OntoExtract (AOE)** is developed in the **`ontology_generator`** repository (underscore, not `ontology-generator`). A typical local layout is `~/code/ontology_generator` alongside this repo. Cross-references in this document mean that project.
+**Companion codebase:** **Arango-OntoExtract (AOE)** is developed in the **`arango-ontoextract`** repository. A typical local layout is `~/code/arango-ontoextract` alongside this repo. Cross-references in this document mean that project.
 
 ---
 
@@ -23,7 +23,7 @@ The system operates as:
   `[mcp]` extra; see §3.11) that exposes the same operations as MCP tools
   for AI agents and IDEs
 
-**Quality and lineage (directional):** v0.1 ships **metadata confidence**, **review gating**, and **offline eval F1 scores** against domain packs. Broader **ontology-quality metrics** and **temporal provenance** for re-analysis and schema drift are specified in §3.12 and §3.13 to align with the patterns used in **Arango-OntoExtract (AOE)** (`ontology_generator` — multi-signal scoring, health score, extraction run records, and temporal diff).
+**Quality and lineage (directional):** v0.1 ships **metadata confidence**, **review gating**, and **offline eval F1 scores** against domain packs. Broader **ontology-quality metrics** and **temporal provenance** for re-analysis and schema drift are specified in §3.12 and §3.13 to align with the patterns used in **Arango-OntoExtract (AOE)** (`arango-ontoextract` — multi-signal scoring, health score, extraction run records, and temporal diff).
 
 ---
 
@@ -155,7 +155,7 @@ When an LLM provider is configured, the system uses it to:
 
 When no LLM is available (no provider or no API key), the system **degrades gracefully** to deterministic baseline inference.
 
-**Human-in-the-loop:** `metadata.review_required` (with `confidence` vs `reviewThreshold`) signals that outputs are **provisional**. This library does not implement curation UIs; consumers (e.g. **AOE** in `ontology_generator`) own approval, edit, and promotion workflows.
+**Human-in-the-loop:** `metadata.review_required` (with `confidence` vs `reviewThreshold`) signals that outputs are **provisional**. This library does not implement curation UIs; consumers (e.g. **AOE** in `arango-ontoextract`) own approval, edit, and promotion workflows.
 
 **Implementation**: `AgenticSchemaAnalyzer` in `analyzer.py`, with the generate-validate-repair loop in `workflow.py`.
 
@@ -278,7 +278,7 @@ The system includes a domain-based evaluation framework:
   missing/invalid → `401 UNAUTHENTICATED`, constant-time compared) and inherit
   the `run_tool` allowlist/cache-root trust boundary uniformly.
 
-**Reference:** AOE documents a full MCP surface for ontology library and extraction (`ontology_generator` PRD §6.10); this project scopes MCP to **schema reverse-engineering and mapping** only.
+**Reference:** AOE documents a full MCP surface for ontology library and extraction (`arango-ontoextract` PRD §6.10); this project scopes MCP to **schema reverse-engineering and mapping** only.
 
 #### **3.12. Quality metrics — extraction and ontology structure**
 
@@ -303,7 +303,7 @@ This library produces a **conceptual schema** and **physical mapping**, optional
 
 **3.12.3. Target — richer ontology / extraction quality (roadmap)**
 
-Inspired by **AOE** (`ontology_generator`): multi-signal confidence, structural ontology metrics, and composite scores. Mapped to **schema-derived** artifacts (no document chunks unless optional domain context is added later):
+Inspired by **AOE** (`arango-ontoextract`): multi-signal confidence, structural ontology metrics, and composite scores. Mapped to **schema-derived** artifacts (no document chunks unless optional domain context is added later):
 
 | Category | Intended metrics | Notes |
 |---|---|---|
@@ -327,7 +327,7 @@ Inspired by **AOE** (`ontology_generator`): multi-signal confidence, structural 
 
 **Problem:** Consumers need to know **when** an analysis was produced, **what physical schema** it reflected, and **what changed** after a database or mapping evolves — especially for **ontology update cycles** driven by graph schema changes.
 
-**AOE reference:** `ontology_generator` uses **extraction run** documents (`started_at`, `completed_at`, `model`, `prompt_version`, stats), **temporal versioning** on ontology entities (`created` / `expired` intervals), **point-in-time snapshot** APIs, and **temporal diff** between timestamps (PRD §5.3, §6.5, data model for `extraction_runs`, `quality_history`).
+**AOE reference:** `arango-ontoextract` uses **extraction run** documents (`started_at`, `completed_at`, `model`, `prompt_version`, stats), **temporal versioning** on ontology entities (`created` / `expired` intervals), **point-in-time snapshot** APIs, and **temporal diff** between timestamps (PRD §5.3, §6.5, data model for `extraction_runs`, `quality_history`).
 
 **3.13.1. Minimum viable (target for schema-analyzer)**
 
@@ -383,7 +383,7 @@ Schema-analyzer distinguishes between **physical shape** changes (which invalida
 
 Full **edge-interval time travel** for every conceptual entity (AOE-style `created`/`expired` on all versions) is **not** required for v0.1. If schema-analyzer outputs are **imported into AOE**, AOE’s temporal layer can own fine-grained history; this PRD still requires **run-level** and **fingerprint-level** provenance here so handoffs are auditable.
 
-**3.13.5. Bitemporal stamping (target — commissioned 2026-09-11)**
+**3.13.5. Bitemporal stamping (shipped 0.13.0, 2026-09-12; commissioned 2026-09-11)**
 
 > Commissioned by the CDF unified-architecture paper
 > (`contextual-data-fabric/docs/research/unified-ontology-mapping-architecture.md`,
@@ -854,7 +854,7 @@ relational query patterns against the graph. Adapter only — like the `cypher` 
 Deliberately **gated on a concrete SQL consumer** — not built speculatively.
 
 #### **6.5. Advanced Features**
-- **Schema evolution and lineage** — See §3.13 (run records, fingerprint linkage, diff between analyses, stale detection). Optional alignment with AOE temporal imports when analyses are promoted into `ontology_generator`.
+- **Schema evolution and lineage** — See §3.13 (run records, fingerprint linkage, diff between analyses, stale detection). Optional alignment with AOE temporal imports when analyses are promoted into `arango-ontoextract`.
 - **Quality metrics expansion** — See §3.12.3 (structural ontology metrics, optional gold recall, health score, metric history).
 - **Confidence calibration from eval feedback loops.** _Shipped in 0.8.0._
   `schema_analyzer/eval/calibration.py` pairs
@@ -886,7 +886,7 @@ pending roadmap work**. Revisit only via an explicit scope change.
   timestamps, snapshot/shape/counts fingerprints, `diff_analyses`, element
   `source` tags) and stops there. Fine-grained bitemporal history
   (`created`/`expired` on every element, "as-of" reconstruction) is owned by
-  AOE's temporal layer when analyses are promoted into `ontology_generator`;
+  AOE's temporal layer when analyses are promoted into `arango-ontoextract`;
   duplicating it here is out of scope.
 
 ---

@@ -140,8 +140,10 @@ arangodb-schema-analyzer eval \
 ```
 
 Pass `--baseline <prior-report.json>` to diff a new run against an earlier
-report (the baseline file is whatever a previous `--report` produced; no
-baseline ships in the repo).
+report. The CI regression gate compares against the checked-in
+`eval/baselines/ci_no_llm_baseline.json` (regenerated 2026-09-14 after the
+3.12 discriminator fix; PRD §3.12.3); any report you saved with `--report`
+also works as a baseline.
 
 Options: `--url`, `--user`, `--password`, `--database`, `--domains`, `--sample-limit`, `--timeout-ms`, `--scale`, `--no-cleanup`.
 
@@ -199,6 +201,26 @@ Exports (see `schema_analyzer/__init__.py`):
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
 
+- **0.14.0** — **LPG type detection converged on the analyzer** (CDF unified-
+  architecture paper Q-5): tier-1 type-field names (`type`, `_type`, `entityType`,
+  `@type`, `entity_type`; edges `type`, `relation`, `relationship`, `relType`,
+  `predicate`) are accepted on coverage alone, broadened names need a type-like
+  token, and edges carrying `_fromType` / `_toType` resolve endpoints without
+  `DOCUMENT()` lookups. This analyzer is the portfolio's owner of "what is the
+  type field"; `arango-ontoextract` and `arango-cypher-py` consume its answer.
+- **0.13.1** — CSI `provenance.validTimeSource` admits all five producer values
+  (`catalog`, `event`, `file`, `fingerprint-continuity`, `observed`), matching
+  `relational-schema-analyzer` 0.8.
+- **0.13.0** — **bitemporal stamping** (PRD §3.13.5): every result and CSI
+  document carries `transactionTime`, `validTime.from`, `validTimeSource` and
+  `predecessorFingerprint`; valid time by fingerprint continuity from a prior
+  run (`input.previousAnalysis` / `--prior-run`).
+- **0.12.x** — `FOREIGN_KEY` / `JOIN_TABLE` relationship styles, FK inference
+  to any single-column candidate key, `detectForeignKeys` /
+  `sampleForeignKeyOverlap` reachable through the v1 tool contract, and the
+  fix for LPG discriminator detection being inert on ArangoDB 3.12.
+- **0.11.0** — temporal element provenance (PRD §3.13.2), cache schema
+  versioning + invalidate, and the CI eval regression gate.
 - **0.10.0** — **caller-supplied `domainContext`** (override auto domain
   detection), **incremental re-analysis** (`analyze_incremental` +
   `assess_change_state` / `refresh_statistics` with stored shape/counts

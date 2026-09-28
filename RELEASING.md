@@ -56,8 +56,9 @@ The project is set up for [PyPI Trusted Publishing](https://docs.pypi.org/truste
 
 6. The tag push triggers `.github/workflows/publish.yml`, which builds the
    sdist + wheel, runs `twine check --strict`, and uploads to PyPI via OIDC.
-   Re-running the workflow for an already-published version fails with
-   `400 File already exists`; that is PyPI refusing a duplicate, not a publisher problem.
+   The publish step sets `skip-existing: true`, so re-running the workflow for an
+   already-published version is a green no-op (it skips the existing files) rather
+   than a `400 File already exists` failure — handy for confirming OIDC works.
 7. Create a GitHub Release from the tag (optional but recommended) and paste
    the changelog section into the release notes.
 

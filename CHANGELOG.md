@@ -4,6 +4,22 @@
 
 (no changes)
 
+## 0.14.1 — 2026-10-05
+
+### Fixed
+- **An edge field that copies its endpoint collection names is no longer taken for the
+  relationship type.** On the IAM demo database every dedicated edge collection
+  (`CAN_ACCESS`, `CAN_ASSUME`, `ASSOCIATES`, …) also stores `destination_sub_type`, a copy
+  of the target collection's name. 0.14.0 accepted it as the discriminator, mapping
+  `CAN_ACCESS` as `GENERIC_WITH_TYPE` into relationships named `aws_ec2_instance`,
+  `aws_s3_bucket`, …, so consumers could not express `[:CAN_ACCESS]`. For edge
+  collections, a candidate field whose observed values are (≥ 90 % by mass,
+  `ENDPOINT_MIRROR_FRACTION`) the names of the collection's own from/to collections is now
+  dropped before every acceptance path. Verified on the live IAM database: the `IAM_DEMO`
+  mapping now has its 20 real relationship types, each `DEDICATED_COLLECTION`. A genuine
+  relation field next to such a mirror is still picked, and without endpoint data the
+  rule does nothing.
+
 ## 0.14.0 — 2026-09-14
 
 ### Changed

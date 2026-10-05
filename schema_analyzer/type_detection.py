@@ -163,6 +163,47 @@ def _iter_scalar_values(v: Any):
         return
 
 
+#: Share of an edge field's observed value mass that must name the edge's own
+#: endpoint collections for the field to count as an *endpoint mirror*. Such a
+#: field (``destination_sub_type = "aws_ec2_instance"`` on a ``CAN_ACCESS``
+#: edge collection, found on the IAM demo database) records where each edge
+#: points, which ``_to`` already says; read as a relationship type it renames a
+#: dedicated ``CAN_ACCESS`` collection into one "relationship" per target
+#: collection, and Cypher can no longer say ``[:CAN_ACCESS]``.
+ENDPOINT_MIRROR_FRACTION = 0.9
+
+
+def _endpoint_collection_names(entry: dict[str, Any]) -> set[str]:
+    """Casefolded names of an edge collection's from/to collections, as the
+    snapshot sampled them or the named graphs declared them."""
+    endpoints = entry.get("edge_endpoints") or {}
+    if not isinstance(endpoints, dict):
+        return set()
+    names: set[str] = set()
+    for key in ("from_collections", "to_collections"):
+        for c in endpoints.get(key) or []:
+            if isinstance(c, str) and c:
+                names.add(c.casefold())
+    return names
+
+
+def _mirrors_endpoint_collections(items: Any, endpoint_names: set[str]) -> bool:
+    """True when the field's observed values are (by mass) endpoint collection names."""
+    if not endpoint_names or not isinstance(items, list) or not items:
+        return False
+    total = 0
+    mirrored = 0
+    for it in items:
+        if not isinstance(it, dict) or "value" not in it:
+            continue
+        n = it.get("count")
+        weight = n if isinstance(n, int) and n > 0 else 1
+        total += weight
+        if str(it["value"]).casefold() in endpoint_names:
+            mirrored += weight
+    return total > 0 and mirrored / total >= ENDPOINT_MIRROR_FRACTION
+
+
 def _pick_best_type_field(
     entry: dict[str, Any],
     *,
@@ -189,6 +230,10 @@ def _pick_best_type_field(
     Among the candidates that pass, the field with the most distinct values
     wins (tie-broken by the preferred-name ordering).
 
+    Edge rule — a field whose values mirror the edge's endpoint collection
+    names (:data:`ENDPOINT_MIRROR_FRACTION`) is never a discriminator, in any
+    tier: it says where an edge points, not what relationship it is.
+
     Edge special case — a single-distinct-value field is accepted as a
     discriminator when that single value differs from both the collection
     name and its derived relationship type. This disambiguates a genuine
@@ -213,6 +258,9 @@ def _pick_best_type_field(
     preferred = PREFERRED_EDGE_TYPE_FIELDS if is_edge else PREFERRED_DOC_TYPE_FIELDS
     tier1 = TIER1_EDGE_TYPE_FIELDS if is_edge else TIER1_DOC_TYPE_FIELDS
     ordered = [c for c in preferred if c in candidates] + [c for c in candidates if c not in preferred]
+    if is_edge:
+        endpoint_names = _endpoint_collection_names(entry)
+        ordered = [c for c in ordered if not _mirrors_endpoint_collections(value_counts.get(c), endpoint_names)]
 
     # Tier-1 rule (converged from arango-ontoextract): an unambiguous type-field
     # name is accepted on coverage alone, in preference order, even when its true

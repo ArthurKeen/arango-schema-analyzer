@@ -229,3 +229,76 @@ def test_edge_endpoints_fall_back_when_no_endpoint_fields(monkeypatch) -> None:
     assert result["collections_by_relation"] == {
         "KNOWS": {"from_collections": ["people"], "to_collections": ["people"]}
     }
+
+
+# ── Endpoint mirrors are not relationship types ─────────────────────────────
+
+
+def _iam_edge(name: str, field: str, values: list[tuple[str, int]], *, to: list[str], frm: list[str]) -> dict[str, Any]:
+    """An IAM-demo-shaped dedicated edge collection whose documents carry a
+    denormalised copy of the target collection name (``destination_sub_type``)."""
+    entry = _entry(name=name, kind="edge", count=sum(c for _, c in values), field=field, values=values)
+    entry["edge_endpoints"] = {"from_collections": frm, "to_collections": to}
+    return entry
+
+
+def test_a_field_naming_the_target_collections_is_not_a_relation_type() -> None:
+    values = [("aws_ec2_instance", 50), ("aws_s3_bucket", 30), ("aws_lambda_function", 20)]
+    entry = _iam_edge(
+        "CAN_ACCESS",
+        "destination_sub_type",
+        values,
+        frm=["aws_iam_role", "aws_iam_user"],
+        to=["aws_ec2_instance", "aws_s3_bucket", "aws_lambda_function"],
+    )
+    assert _pick_best_type_field(entry, is_edge=True) is None
+
+
+def test_the_mirror_rule_applies_to_tier1_names_too() -> None:
+    values = [("aws_ec2_instance", 60), ("aws_s3_bucket", 40)]
+    entry = _iam_edge("CAN_READ", "type", values, frm=["aws_iam_role"], to=["aws_ec2_instance", "aws_s3_bucket"])
+    assert _pick_best_type_field(entry, is_edge=True) is None
+
+
+def test_a_single_mirrored_value_is_not_the_single_value_fallback() -> None:
+    entry = _iam_edge(
+        "ASSUMES", "destination_sub_type", [("aws_iam_role", 40)], frm=["aws_iam_instance_profile"], to=["aws_iam_role"]
+    )
+    assert _pick_best_type_field(entry, is_edge=True) is None
+
+
+def test_a_real_relation_field_next_to_a_mirror_is_still_picked() -> None:
+    entry = _iam_edge(
+        "edges",
+        "relation",
+        [("KNOWS", 50), ("WORKS_AT", 50)],
+        frm=["nodes"],
+        to=["nodes", "companies"],
+    )
+    entry["candidate_type_fields"] = ["destination_sub_type", "relation"]
+    entry["sample_field_value_counts"]["destination_sub_type"] = [
+        {"value": "nodes", "count": 60},
+        {"value": "companies", "count": 40},
+    ]
+    assert _pick_best_type_field(entry, is_edge=True) == "relation"
+
+
+def test_a_minority_of_collection_named_values_does_not_disqualify() -> None:
+    """A genuine relation type may coincide with a collection name; only a field
+    that is (by mass) nothing but endpoint names is a mirror."""
+    values = [("owns", 10), ("MANAGES", 45), ("REPORTS_TO", 45)]
+    entry = _iam_edge("edges", "relation", values, frm=["people"], to=["people", "owns"])
+    assert _pick_best_type_field(entry, is_edge=True) == "relation"
+
+
+def test_without_endpoint_data_the_mirror_rule_is_inert() -> None:
+    entry = _entry(
+        name="CAN_ACCESS",
+        kind="edge",
+        count=100,
+        field="destination_sub_type",
+        values=[("aws_ec2_instance", 50), ("aws_s3_bucket", 50)],
+    )
+    # Without endpoint knowledge the field cannot be judged a mirror; the
+    # existing gates decide (here: accepted as tier-2, two distinct values).
+    assert _pick_best_type_field(entry, is_edge=True) == "destination_sub_type"

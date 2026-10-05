@@ -692,3 +692,72 @@ def test_collection_per_entity_unions_by_type_properties():
     props = [p["name"] for p in ents["Document"]["properties"]]
     assert props == ["account_id", "channel", "citable_url", "source", "subject"]  # sorted union + discriminator
     assert out["physicalMapping"]["entities"]["Document"]["style"] == "COLLECTION"
+
+
+def _iam_demo_snapshot():
+    """Shape of the IAM demo database: dedicated edge collections whose documents
+    carry ``source_sub_type`` / ``destination_sub_type`` copies of the endpoint
+    collection names, with endpoints declared only by the named graph."""
+
+    def edge(name, count, frm, to):
+        return {
+            "name": name,
+            "type": "edge",
+            "count": count,
+            "candidate_type_fields": ["destination_sub_type", "source_sub_type"],
+            "sample_field_value_counts": {
+                "destination_sub_type": [{"value": c, "count": count // len(to)} for c in to],
+                "source_sub_type": [{"value": c, "count": count // len(frm)} for c in frm],
+            },
+            "observed_fields": {"fields": ["destination_sub_type", "source_sub_type", "org_id"]},
+        }
+
+    def doc(name, count):
+        return {
+            "name": name,
+            "type": "document",
+            "count": count,
+            "candidate_type_fields": [],
+            "sample_field_value_counts": {},
+            "observed_fields": {"fields": ["name", "org_id"]},
+        }
+
+    return {
+        "version": 1,
+        "generated_at": "2026-10-05T00:00:00Z",
+        "collections": [
+            doc("aws_iam_role", 400),
+            doc("aws_iam_user", 300),
+            doc("aws_ec2_instance", 500),
+            doc("aws_s3_bucket", 200),
+            edge("CAN_ACCESS", 900, ["aws_iam_role", "aws_iam_user"], ["aws_ec2_instance", "aws_s3_bucket"]),
+            edge("CAN_ASSUME", 300, ["aws_iam_role", "aws_iam_user"], ["aws_iam_role"]),
+        ],
+        "graphs": ["IAM_DEMO"],
+        "graphs_detailed": [
+            {
+                "name": "IAM_DEMO",
+                "edge_definitions": [
+                    {
+                        "collection": "CAN_ACCESS",
+                        "from": ["aws_iam_role", "aws_iam_user"],
+                        "to": ["aws_ec2_instance", "aws_s3_bucket"],
+                    },
+                    {"collection": "CAN_ASSUME", "from": ["aws_iam_role", "aws_iam_user"], "to": ["aws_iam_role"]},
+                ],
+            }
+        ],
+    }
+
+
+def test_endpoint_mirror_fields_leave_edge_collections_dedicated():
+    """Regression (IAM demo, 2026-10-05): ``destination_sub_type`` was read as the
+    relationship type, so CAN_ACCESS became relationships named aws_ec2_instance,
+    aws_s3_bucket, … and Cypher could not express ``[:CAN_ACCESS]``."""
+    out = infer_baseline_from_snapshot(_iam_demo_snapshot())
+    rel_types = {r["type"] for r in out["conceptualSchema"]["relationships"]}
+    assert rel_types == {"CAN_ACCESS", "CAN_ASSUME"}
+    pm = out["physicalMapping"]["relationships"]
+    assert pm["CAN_ACCESS"]["style"] == "DEDICATED_COLLECTION"
+    assert pm["CAN_ASSUME"]["style"] == "DEDICATED_COLLECTION"
+    assert "LPG_GENERIC_EDGE" not in out.get("metadata", {}).get("detectedPatterns", [])

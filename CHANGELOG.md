@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.2 — 2026-10-05
+
 ### Fixed
 - **Upper-case collection names are singularized, so their relationships are found.**
   `utils.singularize` matched plural suffixes in lower case only, so `CUSTOMERS`, `ORDERS`

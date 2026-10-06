@@ -302,3 +302,11 @@ def test_without_endpoint_data_the_mirror_rule_is_inert() -> None:
     # Without endpoint knowledge the field cannot be judged a mirror; the
     # existing gates decide (here: accepted as tier-2, two distinct values).
     assert _pick_best_type_field(entry, is_edge=True) == "destination_sub_type"
+
+
+def test_entity_type_from_an_upper_case_collection_is_singular():
+    # utils.singularize ignored upper-case suffixes, so CUSTOMERS stayed plural.
+    from schema_analyzer.type_detection import infer_entity_type_from_collection_name
+
+    assert infer_entity_type_from_collection_name("CUSTOMERS") == "CUSTOMER"
+    assert infer_entity_type_from_collection_name("customers") == "Customer"

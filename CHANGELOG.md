@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.3 — 2026-10-12
+
 ### Fixed
 - **A reference whose keys differ only in case or padding is no longer deleted by FK
   inference.** The value-overlap probe compared with AQL `==`, which is case- and

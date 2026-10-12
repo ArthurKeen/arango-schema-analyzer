@@ -6,6 +6,13 @@ from .arango_products import (
 )
 from .conceptual import ConceptualSchema
 from .csi import CSI_VERSION, from_csi, to_csi
+from .declared_references import (
+    DeclaredReference,
+    DeclaredReferenceError,
+    apply_reference_overlay,
+    aql_containment,
+    parse_overlay,
+)
 from .diff import diff_analyses
 from .docs import generate_schema_docs
 from .exports import build_cypher_resolution_index, export_mapping
@@ -50,6 +57,11 @@ __all__ = [
     "InferenceOptions",
     "InferredForeignKey",
     "infer_foreign_keys",
+    "DeclaredReference",
+    "DeclaredReferenceError",
+    "apply_reference_overlay",
+    "aql_containment",
+    "parse_overlay",
     "ArangoValueSampler",
     "discover_abstractions_for_analysis",
     "merge_taxonomy_into_analysis",

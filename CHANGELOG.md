@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+- **Declared attribute references for document stores** (`declared_references`, issue
+  ArthurKeen/arango-schema-analyzer#27). A caller can declare a reference the analyzer cannot
+  see or should not have to guess — `chunks.document_id -> documents._key` — through
+  `apply_reference_overlay(...)`, `AgenticSchemaAnalyzer(declared_references=...)`,
+  `analysisOptions.declaredReferences` on the tool contract, or `analyze --declared-references
+  FILE` on the CLI. The overlay is the shape contextual-data-fabric already carries
+  (`{"references": [{fromCollection, attribute, toCollection, toAttribute}]}`). Each declaration
+  is verified against the live database by full containment — every non-null value must
+  resolve, compared strictly, with numeric ids cast to match string `_key`s — and merged as a
+  `FOREIGN_KEY` relationship with `method: "declared"`, `confidence: 1.0` and conceptual
+  `source: "declared"`. A declaration outranks an inferred relationship for the same reference
+  and keeps its name. One that does not hold, names an unmapped collection, or has no non-null
+  values **fails the analysis** with `INVALID_ARGUMENT` and the reason (e.g. `20/21 non-null
+  values resolve`), and nothing is merged. Status lands in `metadata.declaredReferenceStatus`.
+
 ### Fixed
 - **A real `analyze` result can be fed back into the contract.** The request schema's copy of
   `AnalysisOutput` closed `physicalMapping` without `shardFamilies` — which every analysis
@@ -14,6 +30,19 @@
   analyses that omitted the key. All three are now declared (both schema copies), keeping the
   request side's input-size caps, and a live integration test feeds a real result back through
   every operation that takes one.
+- **Attribute-carried relationships now export valid CSI.** CSI's physical relationship `style`
+  admits only edge-backed styles, so an analysis containing a `FOREIGN_KEY` relationship (from
+  `detect_foreign_keys`) produced a document that failed `validate_csi`. `to_csi` now carries
+  such a relationship on the conceptual layer only, with its join under `reference`
+  (`fromCollection`, `fromFields`, `toCollection`, `toKeyFields`, `confidence`, `method`,
+  `evidence`, and `origin` = `declared` | `inferred`); `from_csi` restores the physical mapping,
+  so the round trip is lossless. A reference with no conceptual relationship is listed in
+  `provenance.unattributedReferences` rather than dropped. No CSI schema change.
+- **`detectForeignKeys` works through the tool contract.** The response schema did not admit the
+  `FOREIGN_KEY` relationship style the option emits, so whenever it found a reference the request
+  failed response validation and returned `INTERNAL_ERROR`. Found only by running against a live
+  ArangoDB; the response schema (both copies) now declares the style and its fields, and a live
+  integration test pins it.
 
 ## 0.14.3 — 2026-10-12
 

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+- **A real `analyze` result can be fed back into the contract.** The request schema's copy of
+  `AnalysisOutput` closed `physicalMapping` without `shardFamilies` — which every analysis
+  carries, even as `[]` — and closed `conceptualSchema` without `abstractClasses` /
+  `subClassOfProposals`. So no real analysis was accepted as `input.analysis` (`docs`, `owl`,
+  `export`, `csi`, `resolve`, `diff`) or as `input.previousAnalysis`: the request failed with
+  `INVALID_REQUEST "('shardFamilies' was unexpected)"`. That broke the §3.13.5 prior-run path
+  (incremental analysis and fingerprint-continuity valid time), `analyze --prior-run`, and the
+  CLI `docs` / `owl` subcommands against any real database; their tests used hand-built
+  analyses that omitted the key. All three are now declared (both schema copies), keeping the
+  request side's input-size caps, and a live integration test feeds a real result back through
+  every operation that takes one.
+
 ## 0.14.3 — 2026-10-12
 
 ### Fixed

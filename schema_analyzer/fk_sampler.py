@@ -36,6 +36,58 @@ LET hits = LENGTH(
 RETURN LENGTH(vals) == 0 ? null : hits / LENGTH(vals)
 """
 
+# Same probe, comparing on a normalized key. Ported from RSA 0.9.2 (issue #12): AQL `==`
+# is case- and whitespace-sensitive, so a key written `CUST1` in one collection and
+# `cust1` in another scores **zero** — and zero is the hard veto, so the real reference is
+# not left unconfirmed, it is deleted. Exactly the failure the `_IDENTITY_FIELDS` cast
+# above already guards against for numeric-vs-string `_key`s, in a different disguise.
+#
+# Kept as a *second* query rather than folded into the first, as in RSA. The normalized
+# comparison cannot use an index — `LOWER(TRIM(...))` on the stored field forces a scan
+# per sampled value — so it runs only when the strict result leaves the outcome open.
+_NORMALIZED_PROBE_AQL = """
+LET vals = (
+  FOR d IN @@localCollection
+    FILTER d[@localField] != null
+    LIMIT @sampleSize
+    RETURN DISTINCT LOWER(TRIM(TO_STRING({value})))
+)
+LET hits = LENGTH(
+  FOR v IN vals
+    FILTER LENGTH(
+      FOR t IN @@foreignCollection
+        FILTER LOWER(TRIM(TO_STRING(t[@foreignField]))) == v
+        LIMIT 1
+        RETURN 1
+    ) > 0
+    RETURN 1
+)
+RETURN LENGTH(vals) == 0 ? null : hits / LENGTH(vals)
+"""
+
+#: A strict score at or above this is conclusive, so the normalized probe is not run.
+#: 0.9 is where ``_apply_sampler``'s confidence bump saturates: a higher number could not
+#: change the candidate's fate, and the normalized probe costs an unindexed scan plus a
+#: unit of probe budget.
+_STRICT_IS_CONCLUSIVE = 0.9
+
+
+class Overlap(float):
+    """A containment ratio that remembers whether it needed a normalized comparison.
+
+    A plain ``float`` subclass on purpose: every existing consumer — comparisons,
+    arithmetic, ``float()`` — keeps working unchanged, while ``_apply_sampler`` can read
+    ``normalized`` to label the evidence. Samplers may still return a bare ``float``; it
+    reads as not normalized.
+    """
+
+    normalized: bool
+
+    def __new__(cls, value: float, *, normalized: bool = False) -> Overlap:
+        self = super().__new__(cls, value)
+        self.normalized = normalized
+        return self
+
 # ARANGO: `_key` and `_id` are always strings, but a reference imported from a relational
 # source is typically numeric. Comparing them raw makes every probe return 0.0, which — with
 # `overlap_veto_on_zero` — silently vetoes every genuine candidate (measured against Chinook:
@@ -85,7 +137,6 @@ class ArangoValueSampler:
             self.skipped += 1
             return None
 
-        self.probes += 1
         bind_vars = {
             "@localCollection": local_collection,
             "@foreignCollection": foreign_collection,
@@ -94,26 +145,47 @@ class ArangoValueSampler:
             "sampleSize": self._sample_size,
         }
         value_expr = "TO_STRING(d[@localField])" if foreign_field in _IDENTITY_FIELDS else "d[@localField]"
-        try:
-            cursor = self._db.aql.execute(_PROBE_AQL.format(value=value_expr), bind_vars=bind_vars)
-            rows = list(cursor)
-        except Exception as err:  # noqa: BLE001
-            logger.warning(
-                "fk containment probe failed for %s.%s -> %s.%s: %s",
-                local_collection,
-                local_field,
-                foreign_collection,
-                foreign_field,
-                err,
-            )
-            return None
 
-        if not rows or rows[0] is None:
+        def probe(aql: str) -> float | None:
+            """Run one containment probe, spending one unit of budget."""
+            self.probes += 1
+            try:
+                cursor = self._db.aql.execute(aql.format(value=value_expr), bind_vars=bind_vars)
+                rows = list(cursor)
+            except Exception as err:  # noqa: BLE001
+                logger.warning(
+                    "fk containment probe failed for %s.%s -> %s.%s: %s",
+                    local_collection,
+                    local_field,
+                    foreign_collection,
+                    foreign_field,
+                    err,
+                )
+                return None
+            if not rows or rows[0] is None:
+                return None
+            try:
+                return max(0.0, min(1.0, float(rows[0])))
+            except (TypeError, ValueError):
+                return None
+
+        exact = probe(_PROBE_AQL)
+        if exact is None:
             return None
-        try:
-            return max(0.0, min(1.0, float(rows[0])))
-        except (TypeError, ValueError):
-            return None
+        if exact >= _STRICT_IS_CONCLUSIVE:
+            return Overlap(exact, normalized=False)
+
+        # Issue #12 (ported from RSA 0.9.2): values that differ only in case or padding
+        # are the same key. Strict comparison scores them zero, which is the hard veto —
+        # the reference is deleted rather than left unproven. Costs a second probe, so it
+        # runs only here, where the strict answer left the outcome open.
+        if self.budget_exhausted:
+            self.skipped += 1
+            return Overlap(exact, normalized=False)
+        norm = probe(_NORMALIZED_PROBE_AQL)
+        if norm is not None and norm > exact:
+            return Overlap(norm, normalized=True)
+        return Overlap(exact, normalized=False)
 
     def status(self) -> dict[str, Any]:
         """Probe accounting for ``metadata.foreignKeyStatus``."""

@@ -296,8 +296,7 @@ def test_a_key_differing_only_in_case_is_not_vetoed():
         "here is the hard veto deleting a genuine reference"
     )
     assert getattr(score, "normalized", False) is True, (
-        "the result must say it needed normalizing, or the evidence cannot tell a "
-        "reviewer that the raw values disagree"
+        "the result must say it needed normalizing, or the evidence cannot tell a reviewer that the raw values disagree"
     )
     assert len(db.queries) == 2
 

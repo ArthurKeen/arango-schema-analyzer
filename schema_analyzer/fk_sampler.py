@@ -88,6 +88,7 @@ class Overlap(float):
         self.normalized = normalized
         return self
 
+
 # ARANGO: `_key` and `_id` are always strings, but a reference imported from a relational
 # source is typically numeric. Comparing them raw makes every probe return 0.0, which — with
 # `overlap_veto_on_zero` — silently vetoes every genuine candidate (measured against Chinook:

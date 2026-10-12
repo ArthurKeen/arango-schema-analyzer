@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixed
+- **A reference whose keys differ only in case or padding is no longer deleted by FK
+  inference.** The value-overlap probe compared with AQL `==`, which is case- and
+  whitespace-sensitive, so a key written `CUST1` in one collection and `cust1` (or
+  `" CUST1"`) in another scored zero overlap — and zero is the hard veto, so the genuine
+  relationship was removed rather than left unconfirmed. The probe now runs strict first
+  and, only when the strict result leaves the outcome open (below the 0.9 mark where the
+  confidence bump saturates), a second probe on `LOWER(TRIM(TO_STRING(...)))`. A rescued
+  candidate's evidence says `(matched after normalizing case/whitespace)`, and the score is
+  an `Overlap` float carrying a `normalized` flag, so no consumer changes. The score can only
+  rise, so this can newly accept a candidate but never newly veto one. The normalized probe
+  cannot use an index and spends a unit of probe budget; when the budget is gone the strict
+  answer stands and the run reports `foreignKeyStatus = "degraded"`. Ported from
+  relational-schema-analyzer 0.9.2, whose inference core this module mirrors.
+
 ## 0.14.2 — 2026-10-05
 
 ### Fixed

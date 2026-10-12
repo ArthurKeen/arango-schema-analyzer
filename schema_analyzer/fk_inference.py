@@ -554,6 +554,7 @@ def _apply_sampler(
     """Fold measured value containment into the confidence score."""
     scores: list[float] = []
     any_zero = False
+    any_normalized = False
     for local_field, foreign_field in zip(candidate.fields, candidate.foreign_fields, strict=True):
         try:
             score = sampler(candidate.collection, local_field, candidate.foreign_collection, foreign_field)
@@ -571,6 +572,8 @@ def _apply_sampler(
             continue
         if score <= 0.0:
             any_zero = True
+        if getattr(score, "normalized", False):
+            any_normalized = True
         scores.append(score)
 
     if not scores:
@@ -583,7 +586,14 @@ def _apply_sampler(
     return replace(
         candidate,
         confidence=round(max(0.0, min(1.0, candidate.confidence + bump)), 3),
-        evidence=[*candidate.evidence, f"value containment avg={average:.2f} ({len(scores)} sampled)"],
+        evidence=[
+            *candidate.evidence,
+            f"value containment avg={average:.2f} ({len(scores)} sampled)"
+            # Say so when the match needed case/whitespace normalization. The candidate
+            # is still proposed — it is almost always right — but a reviewer deciding
+            # whether to trust it should see that the raw values do not match.
+            + (" (matched after normalizing case/whitespace)" if any_normalized else ""),
+        ],
     )
 
 

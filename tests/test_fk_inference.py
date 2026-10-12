@@ -266,6 +266,72 @@ def test_sampler_returns_none_for_empty_collection():
     assert ArangoValueSampler(_FakeDB(None))("A", "b", "C", "_key") is None
 
 
+# ── Case and whitespace (ported from RSA issue #12) ──────────────────────────
+
+
+class _ScriptedDB:
+    """A fake whose answer depends on whether the query normalizes.
+
+    The real failure this guards is not "the number was low" but "the candidate was
+    deleted": AQL ``==`` is case-sensitive, so values that are the same key written two
+    ways score zero, and zero is the hard veto.
+    """
+
+    def __init__(self, strict, normalized):
+        self._strict, self._normalized = strict, normalized
+        self.queries = []
+        self.aql = self
+
+    def execute(self, query, bind_vars=None):
+        self.queries.append(query)
+        is_norm = "LOWER(TRIM(" in query
+        return iter([self._normalized if is_norm else self._strict])
+
+
+def test_a_key_differing_only_in_case_is_not_vetoed():
+    db = _ScriptedDB(strict=0.0, normalized=1.0)
+    score = ArangoValueSampler(db)("Invoice", "CustomerCode", "Customer", "code")
+    assert score == 1.0, (
+        "every sampled value names a real document and differs only in case, so a zero "
+        "here is the hard veto deleting a genuine reference"
+    )
+    assert getattr(score, "normalized", False) is True, (
+        "the result must say it needed normalizing, or the evidence cannot tell a reviewer that the raw values disagree"
+    )
+    assert len(db.queries) == 2
+
+
+def test_a_strong_strict_match_does_not_pay_for_a_second_probe():
+    """The normalized probe cannot use an index, so it must not run when it cannot help."""
+    db = _ScriptedDB(strict=1.0, normalized=1.0)
+    sampler = ArangoValueSampler(db)
+    score = sampler("Album", "ArtistId", "Artist", "_key")
+    assert score == 1.0
+    assert getattr(score, "normalized", False) is False
+    assert len(db.queries) == 1
+    assert sampler.probes == 1
+
+
+def test_normalizing_never_lowers_a_score():
+    db = _ScriptedDB(strict=0.6, normalized=0.2)
+    assert ArangoValueSampler(db)("A", "b", "C", "d") == 0.6
+
+
+def test_a_genuine_absence_is_still_a_veto():
+    """Normalizing must not turn "not there" into "there"."""
+    db = _ScriptedDB(strict=0.0, normalized=0.0)
+    assert ArangoValueSampler(db)("A", "b", "C", "d") == 0.0
+
+
+def test_the_second_probe_is_skipped_when_the_budget_is_gone():
+    db = _ScriptedDB(strict=0.0, normalized=1.0)
+    sampler = ArangoValueSampler(db, max_probes=1)
+    score = sampler("A", "b", "C", "d")
+    assert score == 0.0, "budget gone, so the strict answer stands"
+    assert sampler.skipped == 1, "and the caller must be able to see it was not measured"
+    assert sampler.status()["status"] == "degraded"
+
+
 def test_probe_budget_is_enforced_and_reported():
     """Exhaustion must surface, never silently reduce the relationship count."""
     sampler = ArangoValueSampler(_FakeDB(1.0), max_probes=2)

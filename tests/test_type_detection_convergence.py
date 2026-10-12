@@ -192,7 +192,7 @@ def test_edge_endpoints_resolve_from_endpoint_fields_without_document_lookups(mo
             ("COLLECT fromCol = PARSE_IDENTIFIER", [{"fromCollection": "entities", "toCollection": "entities"}]),
             ("ATTRIBUTES(e, true)", [["_from", "_to", "type", "_fromType", "_toType"]]),
             (
-                "fromType = e[@fromField]",
+                "e[@fromField]",  # wrapped in the primary-label expression (issue #28)
                 [
                     {"relType": "OWNS", "fromType": "Person", "toType": "Company"},
                     {"relType": "OWNS", "fromType": "Person", "toType": "Asset"},

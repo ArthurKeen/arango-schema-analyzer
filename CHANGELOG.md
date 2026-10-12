@@ -17,6 +17,16 @@
   and keeps its name. One that does not hold, names an unmapped collection, or has no non-null
   values **fails the analysis** with `INVALID_ARGUMENT` and the reason (e.g. `20/21 non-null
   values resolve`), and nothing is merged. Status lands in `metadata.declaredReferenceStatus`.
+- **Secondary labels are classified, not just collected.** For each primary label, the
+  snapshot records which other labels ride on its nodes (`label_cooccurrence`). A label on
+  *every* node of a primary is an alias and joins the entity's conceptual `labels` — matching
+  r2g's forward CSI, so a forward→reverse round trip is lossless. A label on *some* nodes of
+  exactly one primary is a subtype: recorded as `partialLabels` and proposed as
+  `rdfs:subClassOf` (`method: "secondary_label"`, with its share as evidence). A label that
+  rides on **two or more different primaries** cuts across the types — a provenance tag
+  (`SourceCRM`), tenant or status — and is recorded as `facetLabels`, never as a subtype. A
+  label that is itself some node's primary label is not proposed as a subtype of another.
+  Taxonomy discovery now merges its proposals with these instead of replacing them.
 
 ### Fixed
 - **A real `analyze` result can be fed back into the contract.** The request schema's copy of
@@ -43,6 +53,20 @@
   failed response validation and returned `INTERNAL_ERROR`. Found only by running against a live
   ArangoDB; the response schema (both copies) now declares the style and its fields, and a live
   integration test pins it.
+- **Label arrays now discriminate entities in LPG graphs** (issue
+  ArthurKeen/arango-schema-analyzer#28). r2g's LPG layout puts every node in one collection
+  with `labels: ["Account", "Customer"]`. The type-field query grouped by the whole array, so
+  every value was a list, no discriminator check accepted it, and the collection collapsed to
+  one entity (`Node`), with every relationship `Node -> Node`. An array-valued type field now
+  groups by its **primary** (first) label — the node's identity, which r2g builds the `_key`
+  namespace and CSI `typeValue` on — so the graph reverses into `LABEL` entities
+  (`typeField: "labels"`, `typeValue: "Account"`). The same applies to per-type property
+  sampling, endpoint resolution through the node's labels, and r2g's edge-carried
+  `fromLabels` / `toLabels`. Scalar type fields are unchanged.
+- **`discoverTaxonomy` works through the tool contract.** The response schema's
+  `conceptualSchema` was closed and did not declare `abstractClasses` / `subClassOfProposals`,
+  so any taxonomy result failed response validation and returned `INTERNAL_ERROR`. Both are
+  now declared (both schema copies).
 
 ## 0.14.3 — 2026-10-12
 

@@ -362,6 +362,9 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
     snapshot's top-K sampling dropped.
     """
     cs = ConceptualSchema.empty()
+    # Secondary labels found on only some nodes of a primary label (issue #28): subtype
+    # candidates, proposed as rdfs:subClassOf the primary's entity.
+    label_subclass_proposals: list[dict[str, Any]] = []
     pm = PhysicalMapping.empty()
     detected_patterns: list[str] = []
     max_distinct = _snapshot_max_distinct(snapshot)
@@ -392,10 +395,33 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
         if type_field:
             if "LPG_LABEL" not in detected_patterns:
                 detected_patterns.append("LPG_LABEL")
+            cooccurrence = (col.get("label_cooccurrence") or {}).get(type_field) or {}
+            # A secondary label riding on two or more *different* primary labels cuts across
+            # the types — a provenance tag (``SourceCRM``), tenant, or status — not a subtype
+            # of any one of them. Only a label nested inside a single primary is a subtype.
+            primaries_by_label: dict[str, int] = {}
+            for labels_on_primary in cooccurrence.values():
+                for label in labels_on_primary:
+                    primaries_by_label[label] = primaries_by_label.get(label, 0) + 1
+            facet_labels = {label for label, n in primaries_by_label.items() if n >= 2}
+            primary_totals = {
+                str(it.get("value")): int(it.get("count") or 0)
+                for it in (col.get("sample_field_value_counts") or {}).get(type_field) or []
+                if isinstance(it, dict)
+            }
             for raw in _iter_type_values(col, type_field):
                 ent_name = pascal_case(raw)
                 props = _extract_properties(col, type_value=raw)
-                cs.entities.append({"name": ent_name, "labels": [ent_name], "properties": props})
+                entity: dict[str, Any] = {"name": ent_name, "labels": [ent_name], "properties": props}
+                if cooccurrence.get(raw):
+                    _apply_secondary_labels(
+                        entity,
+                        cooccurrence[raw],
+                        primary_totals.get(raw, 0),
+                        label_subclass_proposals,
+                        facet_labels=facet_labels,
+                    )
+                cs.entities.append(entity)
                 ent_mapping: dict[str, Any] = {
                     "style": "LABEL",
                     "collectionName": collection_name,
@@ -514,13 +540,68 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
     if not collection_per_entity:
         entity_caps, relationship_caps = type_value_caps_from_snapshot(snapshot)
 
+    conceptual_json = cs.to_json()
+    if label_subclass_proposals:
+        entity_names = {e.get("name") for e in cs.entities}
+        # A label that is itself some node's primary label already has an entity of its
+        # own; proposing it as a subtype of another would assert a hierarchy the data does
+        # not show, so only labels with no entity of their own are proposed.
+        proposals = [pr for pr in label_subclass_proposals if pr["subClass"] not in entity_names]
+        if proposals:
+            conceptual_json["subClassOfProposals"] = proposals
     return {
-        "conceptualSchema": cs.to_json(),
+        "conceptualSchema": conceptual_json,
         "physicalMapping": pm.to_json(),
         "detectedPatterns": detected_patterns,
         "entityTypeCaps": entity_caps,
         "relationshipTypeCaps": relationship_caps,
     }
+
+
+def _apply_secondary_labels(
+    entity: dict[str, Any],
+    secondary: dict[str, int],
+    total: int,
+    proposals: list[dict[str, Any]],
+    *,
+    facet_labels: set[str] | frozenset[str] = frozenset(),
+) -> None:
+    """Fold a primary label's co-occurring labels into its entity (issue #28).
+
+    A label carried by *every* node of the primary is another name the node answers to
+    (r2g's ``extra_labels``) and joins the entity's conceptual ``labels``, mirroring r2g's
+    forward CSI so a round trip is lossless. A label on only *some* nodes is a subtype
+    candidate: recorded on the entity under ``partialLabels`` with its share, and proposed
+    as ``rdfs:subClassOf`` the entity — unless it is in ``facet_labels`` (it also rides on
+    other primary labels), in which case it is a cross-cutting tag recorded under
+    ``facetLabels`` and never proposed as a subtype. The physical ``typeValue`` stays the
+    primary label.
+    """
+    partial: dict[str, dict[str, int]] = {}
+    facets: dict[str, dict[str, int]] = {}
+    for label, count in sorted(secondary.items()):
+        name = pascal_case(label)
+        if total and count >= total:
+            if name not in entity["labels"]:
+                entity["labels"].append(name)
+            continue
+        if label in facet_labels:
+            facets[name] = {"count": count, "of": total}
+            continue
+        partial[name] = {"count": count, "of": total}
+        proposals.append(
+            {
+                "subClass": name,
+                "superClass": entity["name"],
+                "method": "secondary_label",
+                "evidence": f"label '{label}' on {count} of {total} '{entity['name']}' nodes",
+                "source": "baseline",
+            }
+        )
+    if partial:
+        entity["partialLabels"] = partial
+    if facets:
+        entity["facetLabels"] = facets
 
 
 def _enrich_endpoints_from_graphs(

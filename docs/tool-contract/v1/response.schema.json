@@ -66,6 +66,23 @@
           "additionalProperties": false,
           "required": ["entities", "relationships", "properties"],
           "properties": {
+            "abstractClasses": {
+              "type": "array",
+              "description": "Abstract classes discovered by taxonomy analysis (PRD §6.3); conceptual only, no physical mapping.",
+              "items": { "type": "object" }
+            },
+            "subClassOfProposals": {
+              "type": "array",
+              "description": "Proposed rdfs:subClassOf edges: from taxonomy discovery (PRD §6.3) and from secondary node labels nested within one primary label (method 'secondary_label').",
+              "items": {
+                "type": "object",
+                "required": ["subClass", "superClass"],
+                "properties": {
+                  "subClass": { "type": "string" },
+                  "superClass": { "type": "string" }
+                }
+              }
+            },
             "entities": {
               "type": "array",
               "items": {

@@ -137,9 +137,7 @@
         ],
         "labels": [
           {
-            "value": [
-              "Entity"
-            ],
+            "value": "Entity",
             "count": 1
           }
         ],

@@ -221,7 +221,9 @@
           "properties": {
             "entities": { "type": "array", "maxItems": 50000, "items": { "type": "object" } },
             "relationships": { "type": "array", "maxItems": 50000, "items": { "type": "object" } },
-            "properties": { "type": "array", "maxItems": 100000, "items": { "type": "object" } }
+            "properties": { "type": "array", "maxItems": 100000, "items": { "type": "object" } },
+            "abstractClasses": { "type": "array", "maxItems": 50000, "items": { "type": "object" } },
+            "subClassOfProposals": { "type": "array", "maxItems": 50000, "items": { "type": "object" } }
           }
         },
         "physicalMapping": {
@@ -230,7 +232,8 @@
           "required": ["entities", "relationships"],
           "properties": {
             "entities": { "type": "object", "additionalProperties": { "type": "object" } },
-            "relationships": { "type": "object", "additionalProperties": { "type": "object" } }
+            "relationships": { "type": "object", "additionalProperties": { "type": "object" } },
+            "shardFamilies": { "type": "array", "maxItems": 50000, "items": { "type": "object" } }
           }
         },
         "metadata": {

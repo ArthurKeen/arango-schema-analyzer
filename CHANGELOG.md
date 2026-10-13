@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.0 — 2026-10-13
+
 ### Added
 - **Declared attribute references for document stores** (`declared_references`, issue
   ArthurKeen/arango-schema-analyzer#27). A caller can declare a reference the analyzer cannot

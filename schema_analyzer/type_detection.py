@@ -66,9 +66,11 @@ TIER1_EDGE_TYPE_FIELDS: tuple[str, ...] = ("type", "relation", "relationship", "
 
 #: Edge documents may carry their endpoint *types* directly (arango-cypher-py's
 #: ``GENERIC_WITH_TYPE`` convention), which lets endpoint resolution skip a per-edge
-#: ``DOCUMENT()`` lookup. Checked in preference order.
-EDGE_FROM_TYPE_FIELDS: tuple[str, ...] = ("_fromType", "fromType", "_from_type")
-EDGE_TO_TYPE_FIELDS: tuple[str, ...] = ("_toType", "toType", "_to_type")
+#: ``DOCUMENT()`` lookup. Checked in preference order. ``fromLabels`` / ``toLabels`` are
+#: r2g's LPG layout, where each is a copy of the endpoint's label array; its first entry
+#: (the primary label) is the endpoint type.
+EDGE_FROM_TYPE_FIELDS: tuple[str, ...] = ("_fromType", "fromType", "_from_type", "fromLabels")
+EDGE_TO_TYPE_FIELDS: tuple[str, ...] = ("_toType", "toType", "_to_type", "toLabels")
 
 
 def infer_entity_type_from_collection_name(collection_name: str) -> str:

@@ -51,11 +51,13 @@ class FakeDB:
                 if "LIMIT 1 RETURN d" in query:
                     return iter(samples[:1])
 
-                if "COLLECT val = d[@field]" in query:
+                if "COLLECT val = " in query and "WITH COUNT INTO cnt" in query:
                     field = bind_vars.get("field", "")
                     agg: dict[str, dict] = {}
                     for s in samples:
                         val = s.get(field)
+                        if isinstance(val, list):  # primary label of a label array (issue #28)
+                            val = val[0] if val else None
                         if val is None:
                             continue
                         k = str(val)

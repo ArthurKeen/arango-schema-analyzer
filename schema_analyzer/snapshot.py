@@ -44,6 +44,42 @@ _SYSTEM_FIELDS = frozenset({"_key", "_id", "_rev", "_from", "_to"})
 _PROPERTY_SAMPLE_LIMIT = 10
 
 
+#: AQL for a type field's *primary* value. A labelled-property-graph node may carry its
+#: labels as an array (r2g's LPG layout: ``labels: ["Account", "Customer"]``); grouping by
+#: the whole array makes every value a list, which no discriminator check accepts, so the
+#: collection collapsed to one entity (issue #28). The first label is the node's identity —
+#: r2g builds the ``_key`` namespace and the CSI ``typeValue`` on it — so an array groups by
+#: its first element. Scalar fields are unchanged.
+_PRIMARY = "(IS_ARRAY({x}) ? FIRST({x}) : {x})"
+
+
+def _detect_label_cooccurrence(db: StandardDatabase, collection_name: str, field: str) -> dict[str, dict[str, int]]:
+    """For an array-valued type field, count the secondary labels riding on each primary.
+
+    Returns ``{primary: {label: count}}``; empty when the field is not array-valued. A label
+    on *every* node of a primary is an alias of it; one on only some is a subtype candidate.
+    """
+    try:
+        cursor = aql_execute(
+            db,
+            "FOR d IN @@c FILTER IS_ARRAY(d[@field]) AND LENGTH(d[@field]) > 1 "
+            "LET p = FIRST(d[@field]) "
+            "FOR l IN UNIQUE(SLICE(d[@field], 1)) "
+            "FILTER IS_STRING(l) AND l != p "
+            "COLLECT primary = p, label = l WITH COUNT INTO cnt "
+            'RETURN {"primary": primary, "label": label, "count": cnt}',
+            bind_vars={"@c": collection_name, "field": field},
+        )
+        out: dict[str, dict[str, int]] = {}
+        for row in cursor:
+            if isinstance(row, dict) and isinstance(row.get("primary"), str) and isinstance(row.get("label"), str):
+                out.setdefault(row["primary"], {})[row["label"]] = int(row.get("count") or 0)
+        return out
+    except Exception as exc:
+        logger.debug("label co-occurrence failed for %s.%s: %s", collection_name, field, exc)
+        return {}
+
+
 def _detect_type_fields_via_collect(
     db: StandardDatabase,
     collection_name: str,
@@ -104,7 +140,7 @@ def _detect_type_fields_via_collect(
                     db,
                     "LET groups = ("
                     "FOR d IN @@c "
-                    "COLLECT val = d[@field] WITH COUNT INTO cnt "
+                    "COLLECT val = " + _PRIMARY.format(x="d[@field]") + " WITH COUNT INTO cnt "
                     "FILTER val != null "
                     "SORT cnt DESC "
                     "RETURN {value: val, count: cnt}"
@@ -137,7 +173,7 @@ def _detect_type_fields_via_collect(
                     db,
                     "LET groups = ("
                     "FOR d IN @@c "
-                    "COLLECT val = d[@field] WITH COUNT INTO cnt "
+                    "COLLECT val = " + _PRIMARY.format(x="d[@field]") + " WITH COUNT INTO cnt "
                     "FILTER val != null "
                     "SORT cnt DESC "
                     "RETURN {value: val, count: cnt}"
@@ -225,7 +261,9 @@ def _detect_observed_fields(
             try:
                 cursor = aql_execute(
                     db,
-                    "FOR d IN @@c FILTER d[@field] == @val LIMIT @lim RETURN ATTRIBUTES(d)",
+                    "FOR d IN @@c FILTER "
+                    + _PRIMARY.format(x="d[@field]")
+                    + " == @val LIMIT @lim RETURN ATTRIBUTES(d)",
                     bind_vars={
                         "@c": collection_name,
                         "field": type_field,
@@ -348,8 +386,8 @@ def _detect_edge_endpoints(
                 db,
                 "FOR e IN @@ec "
                 "COLLECT relType = e[@relField], "
-                "fromType = e[@fromField], "
-                "toType = e[@toField] "
+                "fromType = " + _PRIMARY.format(x="e[@fromField]") + ", "
+                "toType = " + _PRIMARY.format(x="e[@toField]") + " "
                 "RETURN {relType: relType, fromType: fromType, toType: toType}",
                 bind_vars={
                     "@ec": edge_collection_name,
@@ -399,8 +437,8 @@ def _detect_edge_endpoints(
                     "LET fromDoc = DOCUMENT(e._from) "
                     "LET toDoc = DOCUMENT(e._to) "
                     "COLLECT relType = e[@relField], "
-                    "fromType = fromDoc[@nodeTypeField], "
-                    "toType = toDoc[@nodeTypeField] "
+                    "fromType = " + _PRIMARY.format(x="fromDoc[@nodeTypeField]") + ", "
+                    "toType = " + _PRIMARY.format(x="toDoc[@nodeTypeField]") + " "
                     "RETURN {relType: relType, fromType: fromType, toType: toType}",
                     bind_vars={
                         "@ec": edge_collection_name,
@@ -919,6 +957,11 @@ def snapshot_physical_schema(
         is_edge = entry["type"] == "edge"
         best_field = _pick_best_type_field(entry, is_edge=is_edge, max_distinct_values=max_distinct)
         type_values = _type_values_for_field(entry, best_field) if best_field else None
+
+        if not is_edge and best_field:
+            cooccurrence = _detect_label_cooccurrence(db, entry["name"], best_field)
+            if cooccurrence:
+                entry["label_cooccurrence"] = {best_field: cooccurrence}
 
         if is_edge:
             entry["edge_endpoints"] = _detect_edge_endpoints(

@@ -291,7 +291,18 @@ def merge_into_analysis(data: dict[str, Any], proposals: dict[str, Any] | None) 
         known.add(name)
 
     conceptual["abstractClasses"] = list(proposals.get("abstractClasses") or [])
-    conceptual["subClassOfProposals"] = list(proposals.get("subClassOf") or [])
+    # Merge rather than replace: the baseline may already have proposed subtypes from
+    # secondary node labels (issue #28), and taxonomy discovery must not erase them.
+    merged = list(conceptual.get("subClassOfProposals") or [])
+    seen = {(pr.get("subClass"), pr.get("superClass")) for pr in merged if isinstance(pr, dict)}
+    for pr in proposals.get("subClassOf") or []:
+        if not isinstance(pr, dict):
+            continue
+        key = (pr.get("subClass"), pr.get("superClass"))
+        if key not in seen:
+            merged.append(pr)
+            seen.add(key)
+    conceptual["subClassOfProposals"] = merged
     return data
 
 

@@ -282,6 +282,10 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             analyzer.sample_fk_overlap = bool(analysis_options.get("sampleForeignKeyOverlap") or False)
             analyzer.discover_taxonomy = bool(analysis_options.get("discoverTaxonomy") or False)
             analyzer.measure_key_containment = bool(analysis_options.get("measureKeyContainment") or False)
+            # Curator-declared attribute references (issue #27): verified against the live
+            # database and merged; a declaration that does not hold fails the request with
+            # INVALID_ARGUMENT (DeclaredReferenceError is a SchemaAnalyzerError).
+            analyzer.declared_references = analysis_options.get("declaredReferences") or None
 
             # Prior-run input (PRD §3.13.5): `input.previousAnalysis` (the existing shared
             # contract field, already used by `diff`) routes `analyze` through

@@ -105,6 +105,31 @@
           "default": false,
           "description": "When detectForeignKeys is set, additionally confirm each candidate by sampling values against the target collection's keys (bounded probe budget). Off by default because it issues extra AQL; raises confidence and vetoes coincidental name matches."
         },
+        "declaredReferences": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["references"],
+          "description": "Curator-declared attribute references for document stores (chunks.document_id -> documents._key). Each is verified against the database by full containment (every non-null value must resolve, compared strictly) and merged as a declared relationship (FOREIGN_KEY, method 'declared', outranking an inferred one for the same reference). A declaration that does not hold, names an unmapped collection, or has no non-null values fails the request with INVALID_ARGUMENT rather than being dropped.",
+          "properties": {
+            "_comment": { "type": "string" },
+            "$schema": { "type": "string" },
+            "references": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["fromCollection", "attribute", "toCollection"],
+                "properties": {
+                  "fromCollection": { "type": "string", "minLength": 1 },
+                  "attribute": { "type": "string", "minLength": 1 },
+                  "toCollection": { "type": "string", "minLength": 1 },
+                  "toAttribute": { "type": "string", "minLength": 1, "default": "_key" },
+                  "_comment": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
         "graphScope": {
           "type": "string",
           "minLength": 1,

@@ -24,6 +24,7 @@ helpers already accept, so an R2G-produced CSI can be audited here directly.
 
 from __future__ import annotations
 
+import copy
 import json
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -142,7 +143,72 @@ def to_csi(
         from .naming import apply_owl_naming
 
         doc = apply_owl_naming(doc, entity_overrides=entity_overrides, property_overrides=property_overrides)
+    return _lift_attribute_references(doc)
+
+
+#: Keys of a ``FOREIGN_KEY`` physical mapping carried onto the conceptual relationship.
+_REFERENCE_FIELDS = ("fromCollection", "fromFields", "toCollection", "toKeyFields", "confidence", "method", "evidence")
+
+
+def _lift_attribute_references(doc: dict[str, Any]) -> dict[str, Any]:
+    """Move ``FOREIGN_KEY`` relationships from the physical mapping onto the conceptual one.
+
+    CSI's physical relationship ``style`` admits only edge-backed styles
+    (``DEDICATED_COLLECTION`` / ``GENERIC_WITH_TYPE``): an attribute-carried reference has
+    no edge collection to name. Emitting it physically produced an invalid document, so the
+    relationship rides the conceptual layer — which CSI leaves open to additive fields — with
+    its join described under ``reference`` (``origin`` = ``declared`` or ``inferred``).
+    :func:`from_csi` restores the physical mapping, so the round trip is lossless.
+    """
+    physical = doc.get("arangoPhysicalMapping")
+    rels = physical.get("relationships") if isinstance(physical, dict) else None
+    if not isinstance(rels, dict) or not any(
+        isinstance(spec, dict) and spec.get("style") == "FOREIGN_KEY" for spec in rels.values()
+    ):
+        return doc
+
+    doc = copy.deepcopy(doc)  # never mutate the caller's analysis
+    rels = doc["arangoPhysicalMapping"]["relationships"]
+    conceptual = doc.get("conceptualModel")
+    concept_rels = conceptual.get("relationships") if isinstance(conceptual, dict) else None
+    by_type = {
+        r.get("type"): r for r in (concept_rels if isinstance(concept_rels, list) else []) if isinstance(r, dict)
+    }
+
+    unattributed: list[str] = []
+    for name in [n for n, spec in rels.items() if isinstance(spec, dict) and spec.get("style") == "FOREIGN_KEY"]:
+        spec = rels.pop(name)
+        reference = {key: spec[key] for key in _REFERENCE_FIELDS if key in spec}
+        reference["origin"] = "declared" if spec.get("method") == "declared" else "inferred"
+        target = by_type.get(name)
+        if target is None:
+            unattributed.append(name)
+            continue
+        target["reference"] = reference
+    if unattributed:
+        # Never silent: a reference with no conceptual relationship cannot be carried.
+        doc.setdefault("provenance", {})["unattributedReferences"] = sorted(unattributed)
     return doc
+
+
+def _restore_attribute_references(conceptual: Any, physical: Any) -> tuple[Any, Any]:
+    """Inverse of :func:`_lift_attribute_references`, for :func:`from_csi`."""
+    concept_rels = conceptual.get("relationships") if isinstance(conceptual, dict) else None
+    if not isinstance(concept_rels, list) or not any(
+        isinstance(r, dict) and isinstance(r.get("reference"), dict) for r in concept_rels
+    ):
+        return conceptual, physical
+
+    conceptual = copy.deepcopy(conceptual)
+    physical = copy.deepcopy(physical) if isinstance(physical, dict) else {"entities": {}, "relationships": {}}
+    pm_rels = physical.setdefault("relationships", {})
+    for rel in conceptual["relationships"]:
+        if not isinstance(rel, dict) or not isinstance(rel.get("reference"), dict):
+            continue
+        reference = dict(rel.pop("reference"))
+        reference.pop("origin", None)
+        pm_rels[rel["type"]] = {"style": "FOREIGN_KEY", **reference, "enforced": False}
+    return conceptual, physical
 
 
 def from_csi(csi: dict[str, Any]) -> dict[str, Any]:
@@ -164,6 +230,7 @@ def from_csi(csi: dict[str, Any]) -> dict[str, Any]:
     if isinstance(src, dict) and isinstance(src.get("fingerprint"), str):
         metadata["physicalSchemaFingerprint"] = src["fingerprint"]
 
+    conceptual, physical = _restore_attribute_references(conceptual, physical)
     return {
         "conceptualSchema": conceptual
         if isinstance(conceptual, dict)

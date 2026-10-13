@@ -302,6 +302,11 @@ class AgenticSchemaAnalyzer:
     # database cost here and therefore separately gated.
     detect_foreign_keys: bool = False
     sample_fk_overlap: bool = False
+    # Curator-declared attribute references (``{"references": [...]}``), verified against
+    # the database by full containment and merged as declared relationships. Unlike the
+    # enrichments above, a declaration that does not hold fails the analysis (it is a
+    # statement about the data, not a guess). See ``declared_references``.
+    declared_references: dict[str, Any] | None = None
     # Discover class abstractions (rdfs:subClassOf) via the shared conceptual-taxonomy
     # library. Deterministic and snapshot-only unless ``measure_key_containment`` is set,
     # which probes for the Arango analogue of class-table inheritance.
@@ -447,6 +452,7 @@ class AgenticSchemaAnalyzer:
             # provider configured — so hooking only the LLM path in `_build_result` would
             # leave the capability unreachable for most callers.
             baseline_fk_status = self._detect_attribute_relationships(stats_holder, snapshot)
+            baseline_declared_status = self._apply_declared_references(stats_holder)
             baseline_taxonomy_status = self._discover_taxonomy(stats_holder)
 
             baseline_conceptual = ConceptualSchema.from_json(stats_holder.get("conceptualSchema", {})).to_json()
@@ -475,6 +481,7 @@ class AgenticSchemaAnalyzer:
                 relationship_type_caps=baseline.get("relationshipTypeCaps") or None,
                 warnings=["LLM provider not configured; returning deterministic baseline inference"],
                 foreign_key_status=baseline_fk_status,
+                declared_reference_status=baseline_declared_status,
                 taxonomy_status=baseline_taxonomy_status,
                 assumptions=[],
                 review_required=True,
@@ -849,6 +856,24 @@ class AgenticSchemaAnalyzer:
                 status.update(probe)
         return status
 
+    def _apply_declared_references(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        """Verify and merge curator-declared attribute references (issue #27).
+
+        Runs after attribute-reference inference so a declaration can outrank an inferred
+        relationship for the same reference. Deliberately not wrapped like the enrichments:
+        a declaration that does not hold raises ``DeclaredReferenceError`` rather than
+        degrading, because a curator statement that stops being true must announce itself.
+        """
+        if not self.declared_references:
+            return None
+        from .declared_references import DeclaredReferenceError, apply_reference_overlay, aql_containment
+
+        if self._db is None:
+            raise DeclaredReferenceError(
+                "declared references are verified against the database, and no database handle is available"
+            )
+        return apply_reference_overlay(data, self.declared_references, containment=aql_containment(self._db))
+
     def _discover_taxonomy(self, data: dict[str, Any]) -> dict[str, Any] | None:
         """Class abstractions, via the shared ``conceptual-taxonomy`` library (PRD §6.3)."""
         if not self.discover_taxonomy:
@@ -915,6 +940,7 @@ class AgenticSchemaAnalyzer:
         # baseline and LLM paths converge: both produce `data`, and both should gain the
         # same relationships and class hierarchy. Running earlier would mean doing it twice.
         fk_status = self._detect_attribute_relationships(data, snapshot)
+        declared_status = self._apply_declared_references(data)
         taxonomy_status = self._discover_taxonomy(data)
 
         annotate_provenance(data, used_baseline=bool(errors))
@@ -970,6 +996,7 @@ class AgenticSchemaAnalyzer:
             if isinstance(data.get("metadata"), dict)
             else None,
             foreign_key_status=fk_status,
+            declared_reference_status=declared_status,
             taxonomy_status=taxonomy_status,
             vci=data.get("metadata", {}).get("vci") if isinstance(data.get("metadata"), dict) else None,
             rdf_topology=data.get("metadata", {}).get("rdfTopology")

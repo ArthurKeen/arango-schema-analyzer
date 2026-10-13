@@ -95,6 +95,10 @@ def _cmd_connect(args: argparse.Namespace) -> int:
         ):
             prior = prior["result"]["analysis"]
         analyze_req["input"] = {"previousAnalysis": prior}
+    declared_file = getattr(args, "declared_references", None)
+    if declared_file:
+        overlay = json.loads(Path(declared_file).read_text(encoding="utf-8"))
+        analyze_req.setdefault("analysisOptions", {})["declaredReferences"] = overlay
     if getattr(args, "provider", None):
         llm: dict[str, Any] = {"provider": args.provider}
         if getattr(args, "model", None):
@@ -252,6 +256,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to a prior analysis JSON (a saved `analyze` result, or its bare "
         "{conceptualSchema,physicalMapping,metadata}) — routes through incremental "
         "analysis so bitemporal valid time (§3.13.5) is carried back by fingerprint-continuity.",
+    )
+    analyze_p.add_argument(
+        "--declared-references",
+        metavar="FILE",
+        help='Path to a declared-references overlay ({"references": [{"fromCollection", "attribute", '
+        '"toCollection", "toAttribute"}]}). Each declaration is verified against the database and '
+        "merged as a declared relationship; one that does not hold fails the run.",
     )
 
     docs_p = sub.add_parser("docs", help="Connect to a DB, analyze, and print Markdown docs.")

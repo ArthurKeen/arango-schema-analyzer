@@ -104,6 +104,7 @@ class AnalysisMetadata(BaseModel):
     # how a consumer tells "ran and found nothing" from "never ran".
     foreign_key_status: dict[str, Any] | None = Field(default=None, alias="foreignKeyStatus")
     taxonomy_status: dict[str, Any] | None = Field(default=None, alias="taxonomyStatus")
+    declared_reference_status: dict[str, Any] | None = Field(default=None, alias="declaredReferenceStatus")
     # Populated by the vertex-centric-index detector (vci.py, PRD §6.1/§6.2).
     # Summary of which relationships carry a VCI pattern; per-relationship
     # detail lives under physicalMapping.relationships[type].vci. Absent when

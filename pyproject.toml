@@ -69,6 +69,10 @@ dev = [
   # discovery runs, so the dev environment must carry the optional dependency;
   # without it CI reported `unavailable` on every run since 2026-08-12.
   "conceptual-taxonomy>=0.1.1",
+  # tests/test_owl_export.py parses the OWL export with a real RDF parser: the
+  # only way to prove the Turtle is valid and means what it should (an
+  # owl:unionOf domain, typed ranges). Test-only; the package never imports it.
+  "rdflib>=7.0",
 ]
 
 [project.urls]

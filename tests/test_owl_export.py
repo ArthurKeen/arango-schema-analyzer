@@ -163,3 +163,153 @@ def test_owl_tool_op_jsonld_format():
     resp_ttl = run_tool({"contractVersion": "1", "operation": "owl", "input": {"analysis": analysis}})
     assert resp_ttl["ok"] is True
     assert "owl:Ontology" in resp_ttl["result"]["turtle"]
+
+
+# ---------------------------------------------------------------------------
+# Datatype properties (issue #13: the export had classes and relationships but
+# no field at all — prod.demo IAM: 1,576 properties, 0 owl:DatatypeProperty)
+# ---------------------------------------------------------------------------
+
+_FIELDS = {
+    "conceptualSchema": {
+        "entities": [
+            {
+                "name": "Chunk",
+                "properties": [
+                    {"name": "content", "type": "string"},
+                    {"name": "position", "type": "integer"},
+                    {"name": "score", "type": "number"},
+                ],
+            },
+            {
+                "name": "Document",
+                "properties": [
+                    {"name": "content", "type": "string"},
+                    {"name": "file-name", "type": "string"},
+                    {"name": "pages", "type": "integer"},
+                    {"name": "score", "type": "string"},
+                    {"name": "PART_OF", "type": "string"},
+                    {"name": "Chunk", "type": "string"},
+                ],
+            },
+            {"name": "Note", "properties": [{"name": "file_name", "type": "string"}]},
+        ],
+        "relationships": [{"type": "PART_OF", "fromEntity": "Chunk", "toEntity": "Document"}],
+    },
+    "physicalMapping": {
+        "entities": {
+            "Chunk": {"style": "COLLECTION", "collectionName": "chunks"},
+            "Document": {
+                "style": "COLLECTION",
+                "collectionName": "documents",
+                "properties": {"pages": {"field": "page_count"}},
+            },
+            "Note": {"style": "COLLECTION", "collectionName": "notes"},
+        },
+        "relationships": {"PART_OF": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "part_of"}},
+    },
+}
+
+
+def _graph(ttl: str):
+    import rdflib
+
+    g = rdflib.Graph()
+    g.parse(data=ttl, format="turtle")
+    return g
+
+
+def _ns():
+    import rdflib
+
+    from schema_analyzer.defaults import DEFAULT_OWL_BASE_IRI, DEFAULT_OWL_PHYSICAL_IRI
+
+    return rdflib.Namespace(DEFAULT_OWL_BASE_IRI), rdflib.Namespace(DEFAULT_OWL_PHYSICAL_IRI)
+
+
+def test_every_field_is_a_datatype_property_with_its_class_as_domain():
+    from rdflib import OWL, RDF, RDFS, XSD
+
+    g = _graph(export_conceptual_model_as_owl_turtle(_FIELDS))
+    S, _ = _ns()
+    assert (S.position, RDF.type, OWL.DatatypeProperty) in g
+    assert (S.position, RDFS.domain, S.Chunk) in g
+    assert (S.position, RDFS.range, XSD.integer) in g
+    assert len(set(g.subjects(RDF.type, OWL.DatatypeProperty))) == 4  # content, position, pages, score
+
+
+def test_a_field_shared_by_classes_has_a_union_domain():
+    """Two rdfs:domain triples would mean the *intersection* of the classes."""
+    from rdflib import OWL, RDFS
+    from rdflib.collection import Collection
+
+    g = _graph(export_conceptual_model_as_owl_turtle(_FIELDS))
+    S, _ = _ns()
+    (domain,) = list(g.objects(S.content, RDFS.domain))
+    members = set(Collection(g, g.value(domain, OWL.unionOf)))
+    assert members == {S.Chunk, S.Document}
+
+
+def test_the_baselines_default_string_type_is_not_asserted_as_a_range():
+    """The baseline types every property "string" without looking at the data."""
+    from rdflib import RDFS
+
+    g = _graph(export_conceptual_model_as_owl_turtle(_FIELDS))
+    S, _ = _ns()
+    assert list(g.objects(S.content, RDFS.range)) == []
+
+
+def test_entities_that_disagree_on_a_type_get_no_range():
+    from rdflib import RDFS
+
+    g = _graph(export_conceptual_model_as_owl_turtle(_FIELDS))
+    S, _ = _ns()
+    assert list(g.objects(S.score, RDFS.range)) == []  # number on Chunk, string on Document
+
+
+def test_a_renamed_field_carries_its_stored_name():
+    g = _graph(export_conceptual_model_as_owl_turtle(_FIELDS))
+    S, P = _ns()
+    assert str(g.value(S.pages, P.attributeName)) == "page_count"
+    assert g.value(S.position, P.attributeName) is None  # the local name is the field
+
+
+def test_names_that_would_pun_or_collapse_are_left_out():
+    """`PART_OF` / `Chunk` are already a property / class IRI; `file-name` and
+    `file_name` would both become :file_name, which could then mean either field."""
+    from rdflib import OWL, RDF
+
+    g = _graph(export_conceptual_model_as_owl_turtle(_FIELDS))
+    S, _ = _ns()
+    assert (S.PART_OF, RDF.type, OWL.DatatypeProperty) not in g
+    assert (S.Chunk, RDF.type, OWL.DatatypeProperty) not in g
+    assert (S.file_name, RDF.type, OWL.DatatypeProperty) not in g
+
+
+def test_a_sanitized_name_maps_back_to_its_field():
+    data = {
+        "conceptualSchema": {"entities": [{"name": "Doc", "properties": [{"name": "file-name"}]}]},
+        "physicalMapping": {"entities": {"Doc": {"style": "COLLECTION", "collectionName": "docs"}}},
+    }
+    g = _graph(export_conceptual_model_as_owl_turtle(data))
+    S, P = _ns()
+    assert str(g.value(S.file_name, P.attributeName)) == "file-name"
+
+
+def test_the_jsonld_export_carries_the_same_datatype_properties():
+    doc = export_conceptual_model_as_jsonld(_FIELDS)
+    by_id = {n["@id"]: n for n in doc["@graph"]}
+    assert by_id["position"]["@type"] == "owl:DatatypeProperty"
+    assert by_id["position"]["rdfs:domain"] == {"@id": "Chunk"}
+    assert by_id["position"]["rdfs:range"] == {"@id": "xsd:integer"}
+    assert by_id["content"]["rdfs:domain"] == {
+        "@type": "owl:Class",
+        "owl:unionOf": {"@list": [{"@id": "Chunk"}, {"@id": "Document"}]},
+    }
+    assert by_id["pages"]["phys:attributeName"] == "page_count"
+    assert "file_name" not in by_id and by_id["PART_OF"]["@type"] != "owl:DatatypeProperty"
+
+
+def test_a_schema_without_fields_exports_as_before():
+    ttl = export_conceptual_model_as_owl_turtle(_SAMPLE)
+    assert "owl:DatatypeProperty" not in ttl

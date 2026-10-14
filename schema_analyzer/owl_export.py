@@ -95,6 +95,103 @@ def _sanitize_iri_local(name: str) -> str:
     return sanitized or "_Unknown"
 
 
+#: Property ``type`` values that name an XSD datatype. ``"string"`` is left out
+#: on purpose: the deterministic baseline gives *every* property ``"string"``
+#: without looking at the values (``baseline._extract_properties``), so it is
+#: not evidence of a range; asserting ``xsd:string`` for an integer field would
+#: be wrong. A property gets ``rdfs:range`` only from a type that was inferred.
+_XSD_RANGE: dict[str, str] = {
+    "integer": "integer",
+    "int": "integer",
+    "float": "double",
+    "double": "double",
+    "number": "double",
+    "decimal": "decimal",
+    "boolean": "boolean",
+    "bool": "boolean",
+    "date": "date",
+    "datetime": "dateTime",
+    "date-time": "dateTime",
+    "timestamp": "dateTime",
+}
+
+
+def _datatype_properties(
+    data: dict[str, Any], *, reserved: set[str]
+) -> list[tuple[str, str, list[str], str | None, str | None]]:
+    """Each entity property as one OWL datatype property.
+
+    Returns ``(local_name, label, domain_entities, xsd_range, field)`` sorted by
+    local name. A property name shared by several entities (``content`` on a
+    Chunk and a Document) is one property whose domain lists them all — the
+    caller writes that as an ``owl:unionOf`` domain, since repeated
+    ``rdfs:domain`` triples mean the *intersection* of the classes.
+
+    * ``xsd_range`` — only when every entity that has the property agrees on an
+      :data:`_XSD_RANGE` type; else ``None`` (no range asserted).
+    * ``field`` — the stored document field when it is not the IRI local name
+      (``physicalMapping.entities.*.properties.<name>.field``, or a name that
+      had to be sanitized), so a consumer reads the right attribute; ``None``
+      when the local name *is* the field, or when entities disagree.
+
+    A local name already used by a class or an object property (*reserved*) is
+    skipped rather than punned, and so is a sanitized name two different
+    property names collapse to — neither IRI could say which field it means.
+    """
+    cs = data.get("conceptualSchema") or {}
+    pm_entities = (data.get("physicalMapping") or {}).get("entities")
+    pm_entities = pm_entities if isinstance(pm_entities, dict) else {}
+    entities = cs.get("entities")
+    by_local: dict[str, dict[str, Any]] = {}
+    for e in entities if isinstance(entities, list) else []:
+        if not isinstance(e, dict) or not isinstance(e.get("name"), str) or not e["name"]:
+            continue
+        mapping = pm_entities.get(e["name"])
+        prop_map = mapping.get("properties") if isinstance(mapping, dict) else None
+        prop_map = prop_map if isinstance(prop_map, dict) else {}
+        props = e.get("properties")
+        for prop in props if isinstance(props, list) else []:
+            if not isinstance(prop, dict) or not isinstance(prop.get("name"), str) or not prop["name"]:
+                continue
+            raw = prop["name"]
+            entry = by_local.setdefault(
+                _sanitize_iri_local(raw), {"raws": set(), "domains": [], "types": set(), "fields": set()}
+            )
+            entry["raws"].add(raw)
+            if e["name"] not in entry["domains"]:
+                entry["domains"].append(e["name"])
+            ptype = prop.get("type")
+            entry["types"].add(_XSD_RANGE.get(ptype.strip().lower()) if isinstance(ptype, str) else None)
+            spec = prop_map.get(raw)
+            field = spec.get("field") if isinstance(spec, dict) else None
+            entry["fields"].add(field if isinstance(field, str) and field else raw)
+
+    out: list[tuple[str, str, list[str], str | None, str | None]] = []
+    for local, entry in sorted(by_local.items()):
+        if local in reserved or len(entry["raws"]) != 1:
+            continue
+        (raw,) = entry["raws"]
+        xsd = next(iter(entry["types"])) if len(entry["types"]) == 1 else None
+        field = next(iter(entry["fields"])) if len(entry["fields"]) == 1 else None
+        out.append((local, raw, list(entry["domains"]), xsd, field if field != local else None))
+    return out
+
+
+def _reserved_locals(data: dict[str, Any]) -> set[str]:
+    """IRI local names the export already gives a class or an object property."""
+    cs = data.get("conceptualSchema") or {}
+    names: set[str] = set()
+    for e in cs.get("entities") or []:
+        if isinstance(e, dict) and isinstance(e.get("name"), str) and e["name"]:
+            names.add(_sanitize_iri_local(e["name"]))
+    for r in cs.get("relationships") or []:
+        if isinstance(r, dict) and isinstance(r.get("type"), str) and r["type"]:
+            names.add(_sanitize_iri_local(r["type"]))
+    for sub, sup in _subclass_edges(data):
+        names.update((_sanitize_iri_local(sub), _sanitize_iri_local(sup)))
+    return names
+
+
 def export_conceptual_model_as_owl_turtle(
     analysis: AnalysisResult | dict[str, Any],
     *,
@@ -130,7 +227,7 @@ def export_conceptual_model_as_owl_turtle(
     lines.append("")
 
     # Declare annotation properties for physical mappings (best-effort; aligns with docs/OWL-FOR-CONCEPTUAL-SCHEMA.md)
-    for ap in ["mappingStyle", "collectionName", "typeField", "typeValue", "edgeCollectionName"]:
+    for ap in ["mappingStyle", "collectionName", "typeField", "typeValue", "edgeCollectionName", "attributeName"]:
         lines.append(f"phys:{ap} a owl:AnnotationProperty .")
     lines.append("")
 
@@ -223,6 +320,24 @@ def export_conceptual_model_as_owl_turtle(
                 lines.append(f"{iri} owl:inverseOf :{_sanitize_iri_local(inverse_of)} .")
             lines.append("")
 
+    # Datatype properties — the entities' fields (docs/OWL-FOR-CONCEPTUAL-SCHEMA.md
+    # "Data Properties"). Without these the ontology carried no field at all.
+    for local, label, domains, xsd, field in _datatype_properties(data, reserved=_reserved_locals(data)):
+        iri = f":{local}"
+        lines.append(f"{iri} a owl:DatatypeProperty ;")
+        lines.append(f'  rdfs:label "{_ttl_escape(label)}" ;')
+        domain_iris = [f":{_sanitize_iri_local(d)}" for d in domains]
+        if len(domain_iris) == 1:
+            lines.append(f"  rdfs:domain {domain_iris[0]} ;")
+        else:
+            lines.append(f"  rdfs:domain [ a owl:Class ; owl:unionOf ( {' '.join(domain_iris)} ) ] ;")
+        if xsd:
+            lines.append(f"  rdfs:range xsd:{xsd} ;")
+        lines[-1] = lines[-1].rstrip(";").rstrip() + " ."
+        if field:
+            lines.append(f'{iri} phys:attributeName "{_ttl_escape(field)}" .')
+        lines.append("")
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -237,7 +352,8 @@ def export_conceptual_model_as_jsonld(
     Carries classes, ``rdfs:subClassOf`` hierarchy (from shard families), object
     properties with domain/range, observed cardinality + functional /
     inverse-functional characteristics (from statistics), explicit
-    ``owl:inverseOf``, and the ``phys:`` physical-mapping annotations.
+    ``owl:inverseOf``, datatype properties (the entities' fields), and the
+    ``phys:`` physical-mapping annotations.
     """
     data = normalize_analysis_dict(analysis)
     cs = data.get("conceptualSchema") or {}
@@ -317,6 +433,18 @@ def export_conceptual_model_as_jsonld(
             if mapping.get("edgeCollectionName"):
                 node["phys:edgeCollectionName"] = str(mapping["edgeCollectionName"])
         graph.append(node)
+
+    for local, label, domains, xsd, field in _datatype_properties(data, reserved=_reserved_locals(data)):
+        dp: dict[str, Any] = {"@id": local, "@type": "owl:DatatypeProperty", "rdfs:label": label}
+        domain_ids = [{"@id": _sanitize_iri_local(d)} for d in domains]
+        dp["rdfs:domain"] = (
+            domain_ids[0] if len(domain_ids) == 1 else {"@type": "owl:Class", "owl:unionOf": {"@list": domain_ids}}
+        )
+        if xsd:
+            dp["rdfs:range"] = {"@id": f"xsd:{xsd}"}
+        if field:
+            dp["phys:attributeName"] = field
+        graph.append(dp)
 
     return {
         "@context": {

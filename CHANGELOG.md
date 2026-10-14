@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+- **The OWL export now declares the entities' fields** (`owl:DatatypeProperty`, issue #13).
+  `export_conceptual_model_as_owl_turtle` and `export_conceptual_model_as_jsonld` emitted classes
+  and object properties but no field at all — on prod.demo `IAM`, 1,576 analyzed properties
+  became 0 datatype properties, so OWL consumers (arango-sparql-py's NL prompt and ontology
+  editor, Protégé, CDF) saw a schema without attributes. Each entity property is now one
+  datatype property: `rdfs:domain` is its class, or an `owl:unionOf` of the classes that share
+  the name (repeated `rdfs:domain` triples would mean their *intersection*); `rdfs:range xsd:*`
+  only from an inferred type all those classes agree on — the baseline's default `"string"` is
+  not evidence of a range and is not asserted; `phys:attributeName` (newly declared) records the
+  stored field when it differs from the IRI local name (a renamed or sanitized field). A name
+  already used by a class or relationship, or two names that sanitize to the same IRI, are left
+  out rather than punned or merged. Relationship (edge) properties are not exported yet.
+
 ## 0.15.0 — 2026-10-13
 
 ### Added

@@ -105,3 +105,90 @@ def test_access_pattern_out_edge_only():
     }
     detect_vci(data, snapshot)
     assert data["physicalMapping"]["relationships"]["R"]["vci"]["indexLevel"]["accessPattern"] == "out-edge"
+
+
+# --- Array-expanded fields in an edge index (the label-list duplication trap) ---
+#
+# A persistent index stores one entry per array element. On an edge collection a
+# traversal scans every entry under the _from/_to prefix, so an index like
+# [_from, type, toLabels[*]] hands each edge back once per label -- inflated counts,
+# no error. Measured on ArangoDB 3.12.9: 20 labels per edge -> 20x rows at one hop,
+# 400x at two. r2g's opt-in `index_edge_labels` provisions exactly this shape, for
+# pattern-match lookups (FOR e IN edges FILTER e._from == ...), where it is correct.
+
+
+def _rel_data(edge_collection: str = "edges"):
+    return {
+        "physicalMapping": {
+            "entities": {},
+            "relationships": {"KNOWS": {"style": "GENERIC_WITH_TYPE", "edgeCollectionName": edge_collection}},
+        },
+        "metadata": {},
+    }
+
+
+def _edge_snapshot(indexes: list[dict]) -> dict:
+    return {"collections": [{"name": "edges", "type": "edge", "indexes": indexes}]}
+
+
+def _index(vci: dict, fields: tuple[str, ...]) -> dict:
+    return {tuple(i["fields"]): i for i in vci["indexLevel"]["indexes"]}[fields]
+
+
+def test_array_expanded_edge_index_is_flagged_not_traversal_safe():
+    data = _rel_data()
+    snapshot = _edge_snapshot(
+        [
+            {"type": "persistent", "fields": ["_from", "type"]},
+            {"type": "persistent", "fields": ["_from", "type", "toLabels[*]"]},
+        ]
+    )
+    summary = detect_vci(data, snapshot)
+    vci = data["physicalMapping"]["relationships"]["KNOWS"]["vci"]
+
+    flat = _index(vci, ("_from", "type"))
+    assert "traversalSafe" not in flat  # absent means safe; existing output unchanged
+
+    arr = _index(vci, ("_from", "type", "toLabels[*]"))
+    assert arr["traversalSafe"] is False
+    assert arr["arrayExpandedFields"] == ["toLabels[*]"]
+    assert arr["risk"] == "ARRAY_EXPANSION_DUPLICATES_TRAVERSAL_ROWS"
+    # An array-expanded field is not a discriminator a traversal can rely on.
+    assert arr["discriminatorFields"] == ["type"]
+
+    # The flat index still makes this a VCI candidate; the risky one is reported.
+    assert data["physicalMapping"]["relationships"]["KNOWS"]["vciCandidate"] is True
+    assert summary["relationships"] == ["KNOWS"]
+    (warning,) = summary["warnings"]
+    assert warning["relationship"] == "KNOWS"
+    assert warning["edgeCollection"] == "edges"
+    assert warning["fields"] == ["_from", "type", "toLabels[*]"]
+    assert warning["code"] == "ARRAY_EXPANSION_DUPLICATES_TRAVERSAL_ROWS"
+
+
+def test_only_an_array_expanded_index_is_reported_but_not_a_vci_candidate():
+    # Previously this index was skipped only if it had no trailing string field;
+    # with one, it was advertised as a healthy VCI. Now it is reported, with the
+    # warning, and never makes the relationship a candidate on its own.
+    data = _rel_data()
+    snapshot = _edge_snapshot([{"type": "persistent", "fields": ["_from", "toLabels[*]"]}])
+    summary = detect_vci(data, snapshot)
+    rel = data["physicalMapping"]["relationships"]["KNOWS"]
+
+    assert "vciCandidate" not in rel
+    arr = _index(rel["vci"], ("_from", "toLabels[*]"))
+    assert arr["traversalSafe"] is False and arr["discriminatorFields"] == []
+    assert summary["relationships"] == []
+    assert [w["fields"] for w in summary["warnings"]] == [["_from", "toLabels[*]"]]
+
+
+def test_scalar_trailing_fields_are_not_flagged():
+    # [_from, eb0, tb0] is the bitmask-label shape. A BIT_AND test cannot use it,
+    # but nothing in the schema says the integers are bitmasks rather than, say,
+    # priorities -- so it must not be flagged. Guards against over-flagging.
+    data = _rel_data()
+    snapshot = _edge_snapshot([{"type": "persistent", "fields": ["_from", "eb0", "tb0"]}])
+    summary = detect_vci(data, snapshot)
+    idx = _index(data["physicalMapping"]["relationships"]["KNOWS"]["vci"], ("_from", "eb0", "tb0"))
+    assert "traversalSafe" not in idx and "risk" not in idx
+    assert summary == {"status": "ok", "relationships": ["KNOWS"]}

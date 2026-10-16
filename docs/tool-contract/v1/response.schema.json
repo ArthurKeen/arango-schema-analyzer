@@ -222,7 +222,7 @@
                   "vci": { "$ref": "#/$defs/Vci" },
                   "vciCandidate": {
                     "type": "boolean",
-                    "description": "True when a vertex-centric-index pattern (index-level and/or denormalization) was detected for this relationship (PRD §6.1/§6.2). The underlying style is preserved; this is an additive optimization hint."
+                    "description": "True when a vertex-centric-index pattern (a traversal-safe index and/or denormalization) was detected for this relationship (PRD §6.1/§6.2). The underlying style is preserved; this is an additive optimization hint."
                   },
                   "source": { "$ref": "#/$defs/ElementSource" },
                   "tripleCandidate": { "type": "boolean" },
@@ -297,7 +297,7 @@
               ]
             },
             "vci": {
-              "description": "Summary of vertex-centric-index detection (PRD §6.1/§6.2): the relationship types for which a VCI pattern was found. Per-relationship detail lives under physicalMapping.relationships[type].vci. Null when no VCI signals were found.",
+              "description": "Summary of vertex-centric-index detection (PRD §6.1/§6.2): the relationship types for which a VCI pattern was found, and warnings for edge indexes a traversal must not use. Per-relationship detail lives under physicalMapping.relationships[type].vci. Null when no VCI signals were found.",
               "oneOf": [
                 { "type": "null" },
                 {
@@ -305,7 +305,22 @@
                   "additionalProperties": true,
                   "properties": {
                     "status": { "type": "string", "enum": ["ok"] },
-                    "relationships": { "type": "array", "items": { "type": "string" } }
+                    "relationships": { "type": "array", "items": { "type": "string" } },
+                    "warnings": {
+                      "description": "Edge indexes a traversal must not use (array-expanded fields). Such an index never makes a relationship a vciCandidate on its own.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                          "relationship": { "type": "string" },
+                          "edgeCollection": { "type": "string" },
+                          "fields": { "type": "array", "items": { "type": "string" } },
+                          "code": { "type": "string" },
+                          "message": { "type": "string" }
+                        }
+                      }
+                    }
                   }
                 }
               ]
@@ -685,7 +700,13 @@
                   "fields": { "type": "array", "items": { "type": "string" } },
                   "discriminatorFields": { "type": "array", "items": { "type": "string" } },
                   "unique": { "type": "boolean" },
-                  "sparse": { "type": "boolean" }
+                  "sparse": { "type": "boolean" },
+                  "traversalSafe": {
+                    "type": "boolean",
+                    "description": "Present and false when the index has array-expanded ([*]) fields: a traversal selecting it returns each edge once per array element. Absent means safe."
+                  },
+                  "arrayExpandedFields": { "type": "array", "items": { "type": "string" } },
+                  "risk": { "type": "string", "enum": ["ARRAY_EXPANSION_DUPLICATES_TRAVERSAL_ROWS"] }
                 }
               }
             }

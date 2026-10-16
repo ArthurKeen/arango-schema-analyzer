@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Fixed
+- **VCI detection no longer advertises an array-expanded edge index as a vertex-centric
+  index.** `detect_vci` treated every persistent index rooted at `_from` / `_to` as a good
+  VCI, so `[_from, type, toLabels[*]]` was reported with `toLabels[*]` as a discriminator
+  and could alone make a relationship a `vciCandidate`. A persistent index stores one entry
+  per array element, and a traversal scans all of them, so a traversal using that index
+  returns each edge once per label -- inflated counts, no error (measured on ArangoDB
+  3.12.9 at 20 labels per edge: 20x the rows at one hop, 400x at two). Such an index is now
+  still reported but marked `traversalSafe: false` with `risk:
+  "ARRAY_EXPANSION_DUPLICATES_TRAVERSAL_ROWS"`, its `[*]` fields move from
+  `discriminatorFields` to `arrayExpandedFields`, `metadata.vci.warnings` names it, and it
+  never makes a relationship a `vciCandidate` on its own. Output for indexes without `[*]`
+  fields is unchanged. r2g provisions this index shape when `LpgLayout.index_edge_labels` is
+  on; it remains correct for pattern-match lookups on the edge collection, which the
+  warning says.
+
 ## 0.15.1 — 2026-10-16
 
 ### Fixed

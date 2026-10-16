@@ -31,7 +31,8 @@ edge once *per element*: inflated counts, no error (measured on ArangoDB 3.12.9 
 reported, marked ``traversalSafe: false`` with a ``risk`` code, its ``[*]`` fields
 listed under ``arrayExpandedFields`` rather than ``discriminatorFields``, and a
 ``metadata.vci.warnings`` entry. It never makes a relationship a ``vciCandidate`` on
-its own. It remains correct for a pattern-match lookup (``FOR e IN edges FILTER
+its own, and ``accessPattern`` counts only traversal-safe indexes (it is omitted when
+there are none). It remains correct for a pattern-match lookup (``FOR e IN edges FILTER
 e._from == ...``), which is why r2g can provision it on request.
 """
 
@@ -182,12 +183,14 @@ def detect_vci(data: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]
         if not index_vci and not denorm:
             continue
 
+        # An index a traversal cannot safely use is reported, never advertised.
+        safe = [i for i in index_vci if i.get("traversalSafe") is not False]
         vci_block: dict[str, Any] = {}
         if index_vci:
-            vci_block["indexLevel"] = {
-                "accessPattern": _access_pattern(index_vci),
-                "indexes": index_vci,
-            }
+            index_level: dict[str, Any] = {"indexes": index_vci}
+            if safe:
+                index_level["accessPattern"] = _access_pattern(safe)
+            vci_block["indexLevel"] = index_level
         if denorm:
             vci_block["denormalization"] = {"duplicatedFields": denorm}
 
@@ -200,11 +203,12 @@ def detect_vci(data: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]
                         "edgeCollection": edge_name,
                         "fields": i["fields"],
                         "code": _ARRAY_EXPANSION_RISK,
-                        "message": _ARRAY_EXPANSION_MESSAGE.format(root=i["root"], fields=i["arrayExpandedFields"]),
+                        "message": _ARRAY_EXPANSION_MESSAGE.format(
+                            root=i["root"], fields=", ".join(i["arrayExpandedFields"])
+                        ),
                     }
                 )
-        # An index a traversal cannot safely use is reported, never advertised.
-        if denorm or any(i.get("traversalSafe") is not False for i in index_vci):
+        if denorm or safe:
             mapping["vciCandidate"] = True
             matched.append(rtype)
 

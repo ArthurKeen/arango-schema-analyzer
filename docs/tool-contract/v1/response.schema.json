@@ -689,7 +689,11 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "accessPattern": { "type": "string", "enum": ["out-edge", "in-edge", "both"] },
+            "accessPattern": {
+              "type": "string",
+              "enum": ["out-edge", "in-edge", "both"],
+              "description": "Directions covered by traversal-safe indexes only. Absent when every index on the relationship has traversalSafe: false."
+            },
             "indexes": {
               "type": "array",
               "items": {

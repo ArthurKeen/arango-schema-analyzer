@@ -178,8 +178,10 @@ def test_only_an_array_expanded_index_is_reported_but_not_a_vci_candidate():
     assert "vciCandidate" not in rel
     arr = _index(rel["vci"], ("_from", "toLabels[*]"))
     assert arr["traversalSafe"] is False and arr["discriminatorFields"] == []
+    assert "accessPattern" not in rel["vci"]["indexLevel"]  # no safe direction to name
     assert summary["relationships"] == []
     assert [w["fields"] for w in summary["warnings"]] == [["_from", "toLabels[*]"]]
+    assert "field(s) toLabels[*]:" in summary["warnings"][0]["message"]
 
 
 def test_scalar_trailing_fields_are_not_flagged():
@@ -192,3 +194,19 @@ def test_scalar_trailing_fields_are_not_flagged():
     idx = _index(data["physicalMapping"]["relationships"]["KNOWS"]["vci"], ("_from", "eb0", "tb0"))
     assert "traversalSafe" not in idx and "risk" not in idx
     assert summary == {"status": "ok", "relationships": ["KNOWS"]}
+
+
+def test_access_pattern_counts_only_traversal_safe_indexes():
+    # A safe outbound index plus a risky inbound one must not read as "both":
+    # inbound traversals have no index they can safely use.
+    data = _rel_data()
+    snapshot = _edge_snapshot(
+        [
+            {"type": "persistent", "fields": ["_from", "type"]},
+            {"type": "persistent", "fields": ["_to", "type", "fromLabels[*]"]},
+        ]
+    )
+    detect_vci(data, snapshot)
+    index_level = data["physicalMapping"]["relationships"]["KNOWS"]["vci"]["indexLevel"]
+    assert index_level["accessPattern"] == "out-edge"
+    assert len(index_level["indexes"]) == 2  # the risky index is still reported

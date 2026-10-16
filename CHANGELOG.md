@@ -13,7 +13,9 @@
   still reported but marked `traversalSafe: false` with `risk:
   "ARRAY_EXPANSION_DUPLICATES_TRAVERSAL_ROWS"`, its `[*]` fields move from
   `discriminatorFields` to `arrayExpandedFields`, `metadata.vci.warnings` names it, and it
-  never makes a relationship a `vciCandidate` on its own. Output for indexes without `[*]`
+  never makes a relationship a `vciCandidate` on its own. `indexLevel.accessPattern` now
+  counts only traversal-safe indexes (and is omitted when there are none), so a risky
+  `[_to, …, fromLabels[*]]` index no longer turns `out-edge` into `both`. Output for indexes without `[*]`
   fields is unchanged. r2g provisions this index shape when `LpgLayout.index_edge_labels` is
   on; it remains correct for pattern-match lookups on the edge collection, which the
   warning says.

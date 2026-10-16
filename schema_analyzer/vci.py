@@ -22,6 +22,18 @@ When either signal fires for a relationship, the relationship's physical mapping
 entry gains a ``vci`` block and ``vciCandidate: true`` *alongside* its existing
 ``DEDICATED_COLLECTION`` / ``GENERIC_WITH_TYPE`` style (the style is never
 overwritten). A ``metadata.vci`` summary lists the relationships involved.
+
+**Array-expanded fields are flagged, not advertised.** A persistent index stores one
+entry per array element, and a traversal scans every entry under the ``_from`` /
+``_to`` prefix -- so an edge index such as ``[_from, type, toLabels[*]]`` returns each
+edge once *per element*: inflated counts, no error (measured on ArangoDB 3.12.9 at
+20 labels per edge: 20x the rows at one hop, 400x at two). Such an index is still
+reported, marked ``traversalSafe: false`` with a ``risk`` code, its ``[*]`` fields
+listed under ``arrayExpandedFields`` rather than ``discriminatorFields``, and a
+``metadata.vci.warnings`` entry. It never makes a relationship a ``vciCandidate`` on
+its own, and ``accessPattern`` counts only traversal-safe indexes (it is omitted when
+there are none). It remains correct for a pattern-match lookup (``FOR e IN edges FILTER
+e._from == ...``), which is why r2g can provision it on request.
 """
 
 from __future__ import annotations
@@ -33,6 +45,12 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_FIELDS = frozenset({"_key", "_id", "_rev", "_from", "_to"})
 _EDGE_ROOTS = ("_from", "_to")
+_ARRAY_EXPANSION_RISK = "ARRAY_EXPANSION_DUPLICATES_TRAVERSAL_ROWS"
+_ARRAY_EXPANSION_MESSAGE = (
+    "Edge index rooted at {root} contains array-expanded field(s) {fields}: a traversal "
+    "that selects it returns each edge once per array element. Do not hint it in "
+    "traversals; it is correct only for pattern-match lookups on the edge collection."
+)
 
 
 def _observed_field_names(entry: dict[str, Any]) -> set[str]:
@@ -73,18 +91,22 @@ def _index_level_vci(collection: dict[str, Any]) -> list[dict[str, Any]]:
         root = fields[0]
         if root not in _EDGE_ROOTS:
             continue
-        discriminators = [f for f in fields[1:] if isinstance(f, str)]
-        if not discriminators:
+        trailing = [f for f in fields[1:] if isinstance(f, str)]
+        if not trailing:
             continue
-        found.append(
-            {
-                "root": root,
-                "fields": [f for f in fields if isinstance(f, str)],
-                "discriminatorFields": discriminators,
-                "unique": bool(idx.get("unique", False)),
-                "sparse": bool(idx.get("sparse", False)),
-            }
-        )
+        expanded = [f for f in trailing if "[*]" in f]
+        entry: dict[str, Any] = {
+            "root": root,
+            "fields": [f for f in fields if isinstance(f, str)],
+            "discriminatorFields": [f for f in trailing if f not in expanded],
+            "unique": bool(idx.get("unique", False)),
+            "sparse": bool(idx.get("sparse", False)),
+        }
+        if expanded:
+            entry["traversalSafe"] = False
+            entry["arrayExpandedFields"] = expanded
+            entry["risk"] = _ARRAY_EXPANSION_RISK
+        found.append(entry)
     return found
 
 
@@ -127,10 +149,12 @@ def _denormalized_fields(
 def detect_vci(data: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any] | None:
     """Annotate relationship mappings with VCI signals and return a summary.
 
-    Returns ``None`` when there is nothing to classify (no relationship
-    mappings). Otherwise returns ``{"relationships": [..names..], "status":
-    "ok"}`` and mutates ``data["physicalMapping"]["relationships"][rt]`` in
-    place, adding a ``vci`` block + ``vciCandidate: true`` to each match.
+    Returns ``None`` when there is nothing to report. Otherwise returns
+    ``{"status": "ok", "relationships": [..candidates..]}`` -- plus ``warnings``
+    when an edge index has array-expanded fields -- and mutates
+    ``data["physicalMapping"]["relationships"][rt]`` in place, adding a ``vci``
+    block to each relationship with a signal and ``vciCandidate: true`` to each
+    one with a traversal-safe index or a denormalized field.
     """
     pm = data.get("physicalMapping")
     if not isinstance(pm, dict):
@@ -141,6 +165,7 @@ def detect_vci(data: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]
 
     collections = _collections_by_name(snapshot)
     matched: list[str] = []
+    warnings: list[dict[str, Any]] = []
 
     for rtype, mapping in rels.items():
         if not isinstance(mapping, dict):
@@ -158,20 +183,39 @@ def detect_vci(data: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]
         if not index_vci and not denorm:
             continue
 
+        # An index a traversal cannot safely use is reported, never advertised.
+        safe = [i for i in index_vci if i.get("traversalSafe") is not False]
         vci_block: dict[str, Any] = {}
         if index_vci:
-            vci_block["indexLevel"] = {
-                "accessPattern": _access_pattern(index_vci),
-                "indexes": index_vci,
-            }
+            index_level: dict[str, Any] = {"indexes": index_vci}
+            if safe:
+                index_level["accessPattern"] = _access_pattern(safe)
+            vci_block["indexLevel"] = index_level
         if denorm:
             vci_block["denormalization"] = {"duplicatedFields": denorm}
 
         mapping["vci"] = vci_block
-        mapping["vciCandidate"] = True
-        matched.append(rtype)
+        for i in index_vci:
+            if i.get("traversalSafe") is False:
+                warnings.append(
+                    {
+                        "relationship": rtype,
+                        "edgeCollection": edge_name,
+                        "fields": i["fields"],
+                        "code": _ARRAY_EXPANSION_RISK,
+                        "message": _ARRAY_EXPANSION_MESSAGE.format(
+                            root=i["root"], fields=", ".join(i["arrayExpandedFields"])
+                        ),
+                    }
+                )
+        if denorm or safe:
+            mapping["vciCandidate"] = True
+            matched.append(rtype)
 
-    if not matched:
+    if not matched and not warnings:
         return None
 
-    return {"status": "ok", "relationships": sorted(matched)}
+    summary: dict[str, Any] = {"status": "ok", "relationships": sorted(matched)}
+    if warnings:
+        summary["warnings"] = warnings
+    return summary

@@ -183,9 +183,17 @@ The system produces multiple output formats:
 | Physical Snapshot | `snapshot` | Deterministic physical schema introspection |
 | Export JSON | `export` | Stable JSON for transpiler consumption (currently Cypher) |
 | Markdown Docs | `docs` | Human-readable schema documentation |
-| OWL Turtle | `owl` | Conceptual schema + physical mapping as OWL 2 ontology with `phys:` annotation properties |
+| OWL (Turtle and JSON-LD) | `owl` | Conceptual schema + physical mapping as OWL 2 ontology with `phys:` annotation properties |
 
-**Implementation**: `docs.py`, `exports.py`, `owl_export.py`.
+**OWL content.** The OWL export (Turtle and JSON-LD) carries classes, object properties
+(relationships, with domains/ranges), and one `owl:DatatypeProperty` per entity property. A
+property name shared by several classes takes an `owl:unionOf` domain (repeated `rdfs:domain`
+would mean their intersection); `rdfs:range` is an `xsd:` type only when all those classes agree
+on an inferred type; `phys:attributeName` records the stored field when it differs from the IRI
+local name. Names that would collide with a class or relationship IRI, or with each other after
+sanitizing, are omitted rather than punned. Relationship (edge) properties are not yet exported.
+
+**Implementation**: `docs.py`, `exports.py`, `owl_export.py` (`export_conceptual_model_as_owl_turtle`, `export_conceptual_model_as_jsonld`).
 
 #### **3.8. Tool Contract (v1)**
 
@@ -194,7 +202,7 @@ The system exposes a **stable non-interactive JSON API** defined by JSON Schema:
 - **Request schema**: `docs/tool-contract/v1/request.schema.json`
 - **Response schema**: `docs/tool-contract/v1/response.schema.json`
 
-Operations: `analyze`, `snapshot`, `export`, `docs`, `owl`.
+Operations: `analyze`, `snapshot`, `export` (targets `cypher` | `sparql`), `docs`, `owl` (`outputOptions.owlFormat` `turtle` | `jsonld`), `diff` (`input.analysis` vs `input.previousAnalysis` → `diff_analyses`), `resolve` (`build_cypher_resolution_index`), and `csi` (`to_csi`).
 
 All requests and responses are validated against the JSON Schema. Failures return structured `{ "ok": false, "error": { "code": "...", "message": "..." } }` responses for both expected errors (`SchemaAnalyzerError`) and unexpected exceptions.
 
@@ -229,10 +237,11 @@ one) keeps this project, `relational-schema-analyzer`, and CDF converged. The CL
 
 #### **3.9. CLI**
 
-Two modes:
+Three surfaces:
 
-1. **Tool mode** (default): `arangodb-schema-analyzer [--request FILE] [--pretty] [--out FILE]` — stdin/stdout JSON using the v1 contract.
-2. **Eval mode**: `arangodb-schema-analyzer eval [--provider NAME] [--model NAME] [--domains LIST] [--report FILE] [--baseline FILE]` — run evaluation benchmarks.
+1. **Tool mode** (default): `arangodb-schema-analyzer [--request FILE] [--pretty] [--out FILE] [-v]` — stdin/stdout JSON using the v1 contract.
+2. **Convenience subcommands**: `snapshot | analyze | docs | owl` with `--url --database --user --password|--password-env-var --out --pretty -v`; `analyze`/`docs`/`owl` add `--provider --model --api-key-env-var`; `analyze --prior-run FILE` (→ `input.previousAnalysis`, §3.8) and `analyze --declared-references FILE` (→ `analysisOptions.declaredReferences`, §6.2); `owl --format turtle|jsonld`. These build v1 requests and call `run_tool`.
+3. **Eval mode**: `arangodb-schema-analyzer eval [--url --user --password --database] [--provider NAME] [--model NAME] [--domains LIST] [--sample-limit N] [--timeout-ms N] [--scale N] [--report FILE] [--baseline FILE] [--fail-on-regression] [--no-cleanup]` — run evaluation benchmarks.
 
 **Implementation**: `cli.py`.
 
@@ -478,7 +487,7 @@ Tunable defaults are centralized in `defaults.py`:
 
 #### **4.6. Testing**
 
-- Unit tests with 65%+ coverage threshold
+- Unit tests with an 80% coverage gate (`pytest --cov-fail-under=80` in CI)
 - Integration tests (opt-in via `RUN_INTEGRATION=1`) against Docker ArangoDB
 - Golden snapshot tests for determinism validation
 - CI: lint (ruff + mypy), test matrix (Python 3.10–3.13), integration on PRs

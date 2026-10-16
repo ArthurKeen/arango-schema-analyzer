@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.1 — 2026-10-16
+
 ### Fixed
 - **The OWL export now declares the entities' fields** (`owl:DatatypeProperty`, issue #13).
   `export_conceptual_model_as_owl_turtle` and `export_conceptual_model_as_jsonld` emitted classes

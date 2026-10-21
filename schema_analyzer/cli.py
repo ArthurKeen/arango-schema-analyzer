@@ -16,6 +16,7 @@ from .defaults import (
     DEFAULT_EVAL_SAMPLE_LIMIT,
     DEFAULT_EVAL_SCALE,
     DEFAULT_TIMEOUT_MS,
+    EVAL_MAX_UNHEALTHY_RUN_FRACTION,
     TOOL_ERROR_EXIT_CODE,
 )
 from .tool import run_tool
@@ -148,9 +149,10 @@ def _cmd_eval(args: argparse.Namespace) -> int:
 
     from .analyzer import AgenticSchemaAnalyzer
     from .eval import (
-        calibration_from_results,
+        build_eval_report,
         compare_reports,
         format_calibration_report,
+        format_eval_summary,
         format_eval_table,
         report_regressions,
         run_eval,
@@ -192,11 +194,15 @@ def _cmd_eval(args: argparse.Namespace) -> int:
 
     print(format_eval_table(results))
 
+    report = build_eval_report(results, ignore_health=args.ignore_health)
+    print()
+    print(format_eval_summary(report))
+
     print("\n--- Confidence calibration ---")
-    print(format_calibration_report(calibration_from_results(results)))
+    print(format_calibration_report(report["calibration"]))
 
     if args.report:
-        save_eval_report(results, args.report)
+        save_eval_report(results, args.report, ignore_health=args.ignore_health)
         print(f"\nReport saved to {args.report}")
 
     if args.baseline and args.report and Path(args.baseline).exists():
@@ -297,6 +303,14 @@ def main(argv: list[str] | None = None) -> int:
         "--fail-on-regression",
         action="store_true",
         help="Exit 1 when a gated quality metric drops vs --baseline (CI regression gate; requires --report).",
+    )
+    eval_p.add_argument(
+        "--ignore-health",
+        action="store_true",
+        help=(
+            f"Report headline scores even when more than {EVAL_MAX_UNHEALTHY_RUN_FRACTION * 100:g}%% of runs "
+            "fell back to the baseline or errored (they are withheld by default)."
+        ),
     )
     eval_p.add_argument("--no-cleanup", dest="cleanup", action="store_false", default=True, help="Keep eval database.")
     eval_p.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")

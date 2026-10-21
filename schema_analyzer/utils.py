@@ -147,13 +147,27 @@ def normalize_analysis_dict(analysis: Any) -> dict[str, Any]:
     return data
 
 
+def llm_cache_segment(*, provider: str, model: str, prompt_version: str | None, system_prompt: str) -> str:
+    """
+    The LLM-specific part of an analysis cache key.
+
+    Everything that changes what the model is asked, or which model answers, belongs
+    here: provider, model, prompt version and the effective system prompt. Without
+    provider and model, switching ``--model`` (or provider) on an unchanged schema
+    returned the previous model's cached answer. The provider is lower-cased so
+    ``"OpenAI"`` and ``"openai"`` share entries, as they share a provider.
+    """
+    return "\x00".join((provider.strip().lower(), model.strip(), prompt_version or "", system_prompt))
+
+
 def analysis_cache_storage_key(physical_fingerprint: str, *, llm_cache_segment: str | None) -> str:
     """
     Filesystem-safe cache filename stem.
 
     Baseline / no-LLM analysis is keyed only by the physical schema fingerprint.
-    LLM runs also incorporate prompt version and effective system prompt so cache
-    entries do not collide when prompts differ.
+    LLM runs also incorporate the segment built by :func:`llm_cache_segment`
+    (provider, model, prompt version and effective system prompt) so cache
+    entries do not collide when any of those differ.
     """
     if not llm_cache_segment:
         return physical_fingerprint

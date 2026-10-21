@@ -77,7 +77,7 @@ from .snapshot import (
     snapshot_physical_schema,
 )
 from .types import AnalysisMetadata, AnalysisResult, now_iso
-from .utils import analysis_cache_storage_key, stable_dumps
+from .utils import analysis_cache_storage_key, llm_cache_segment, stable_dumps
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,19 @@ def _strip_provenance_for_cache(d: dict[str, Any]) -> dict[str, Any]:
         md.pop(k, None)
     out["metadata"] = md
     return out
+
+
+def _is_cached_fallback(cached: dict[str, Any]) -> bool:
+    """True for a cache entry holding a baseline fallback (``metadata.used_baseline``).
+
+    Only meaningful under an LLM key: no-LLM entries are always baseline output.
+    Both the field name and its alias are checked because ``model_dump`` writes
+    field names, but a hand-edited entry may use the alias.
+    """
+    md = cached.get("metadata")
+    if not isinstance(md, dict):
+        return False
+    return bool(md.get("used_baseline") or md.get("usedBaseline"))
 
 
 def _default_system_prompt() -> str:
@@ -405,11 +418,30 @@ class AgenticSchemaAnalyzer:
         api_key = self.api_key or (_api_key_from_env(self.llm_provider) if self.llm_provider else None)
         use_llm = bool(self.llm_provider and api_key)
         system_effective = self._effective_system_prompt()
-        llm_segment = f"{self.prompt_version or ''}\x00{system_effective}" if use_llm else None
+        llm_segment: str | None = None
+        model: str | None = None
+        if use_llm:
+            assert self.llm_provider is not None  # guaranteed by use_llm
+            # Resolved before the cache lookup so the key names the model that would
+            # answer — a cached answer from another model must not be returned.
+            model = self.model or get_default_model(self.llm_provider)
+            llm_segment = llm_cache_segment(
+                provider=self.llm_provider,
+                model=model,
+                prompt_version=self.prompt_version,
+                system_prompt=system_effective,
+            )
         cache_storage_key = analysis_cache_storage_key(fingerprint, llm_cache_segment=llm_segment)
 
         if use_cache and self.cache is not None:
             cached = self.cache.get(cache_storage_key)
+            if cached and use_llm and _is_cached_fallback(cached):
+                # Fallbacks are no longer written under an LLM key, and those cached by
+                # older releases sit under keys that no longer match (provider and model
+                # joined the key). Should one be found anyway, retry the model rather
+                # than replay the baseline; a successful answer then overwrites it.
+                logger.info("Ignoring cached baseline fallback for key prefix %s", cache_storage_key[:16])
+                cached = None
             if cached:
                 logger.info("Cache hit for key prefix %s", cache_storage_key[:16])
                 parsed = AnalysisResult.model_validate(cached)
@@ -521,9 +553,8 @@ class AgenticSchemaAnalyzer:
             return result
 
         logger.info("Using LLM provider=%s", self.llm_provider)
-        assert self.llm_provider is not None and api_key is not None  # guaranteed by use_llm
+        assert self.llm_provider is not None and api_key is not None and model is not None  # guaranteed by use_llm
         provider = create_provider(self.llm_provider, api_key=api_key)
-        model = self.model or get_default_model(self.llm_provider)
 
         elapsed_ms = int((time.time() - started) * 1000)
         remaining = max(MIN_LLM_BUDGET_MS, timeout_ms - elapsed_ms)
@@ -1017,7 +1048,12 @@ class AgenticSchemaAnalyzer:
             metadata=metadata,
         )
 
-        if use_cache and isinstance(self.cache, AnalysisCache):
+        # A fallback (the LLM failed and the baseline answered) is not written under
+        # the model's key: it would be served on every later run until the TTL
+        # expired, so a transient provider failure would stop the model being tried.
+        if errors:
+            logger.info("Not caching a baseline fallback under the LLM cache key")
+        elif use_cache and isinstance(self.cache, AnalysisCache):
             logger.debug("Caching result for cache key prefix %s", cache_storage_key[:16])
             self.cache.set(
                 cache_storage_key,

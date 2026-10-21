@@ -27,6 +27,15 @@
   resolved before the cache lookup and both are part of the key (new helper
   `utils.llm_cache_segment`). Existing LLM cache entries miss once and are rewritten under
   the new key; the no-LLM key is unchanged (the bare schema fingerprint).
+- **A failed LLM run is no longer cached as the model's answer.** When the LLM failed and
+  the analyzer answered with the baseline, that answer was cached under the LLM key, so
+  every later run replayed it (as a cache hit) until the TTL expired and the model was never
+  tried again. Fallbacks are now not cached (sync and async paths); a successful LLM answer
+  and the no-LLM baseline are cached as before. Fallbacks cached by earlier releases can be
+  told apart (their `metadata.used_baseline` is true under an LLM key) but cannot be reached:
+  the key change above means no current lookup matches them, and they age out with their
+  TTL. Should a lookup under an LLM key ever find one, it is treated as a miss and the
+  model is asked again.
 
 ## 0.15.2 — 2026-10-21
 

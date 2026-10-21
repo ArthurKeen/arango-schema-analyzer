@@ -108,6 +108,19 @@ def _strip_provenance_for_cache(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _is_cached_fallback(cached: dict[str, Any]) -> bool:
+    """True for a cache entry holding a baseline fallback (``metadata.used_baseline``).
+
+    Only meaningful under an LLM key: no-LLM entries are always baseline output.
+    Both the field name and its alias are checked because ``model_dump`` writes
+    field names, but a hand-edited entry may use the alias.
+    """
+    md = cached.get("metadata")
+    if not isinstance(md, dict):
+        return False
+    return bool(md.get("used_baseline") or md.get("usedBaseline"))
+
+
 def _default_system_prompt() -> str:
     return (
         "You are a schema analysis engine. Return ONLY a single JSON object matching the provided schema. "
@@ -422,6 +435,13 @@ class AgenticSchemaAnalyzer:
 
         if use_cache and self.cache is not None:
             cached = self.cache.get(cache_storage_key)
+            if cached and use_llm and _is_cached_fallback(cached):
+                # Fallbacks are no longer written under an LLM key, and those cached by
+                # older releases sit under keys that no longer match (provider and model
+                # joined the key). Should one be found anyway, retry the model rather
+                # than replay the baseline; a successful answer then overwrites it.
+                logger.info("Ignoring cached baseline fallback for key prefix %s", cache_storage_key[:16])
+                cached = None
             if cached:
                 logger.info("Cache hit for key prefix %s", cache_storage_key[:16])
                 parsed = AnalysisResult.model_validate(cached)
@@ -1028,7 +1048,12 @@ class AgenticSchemaAnalyzer:
             metadata=metadata,
         )
 
-        if use_cache and isinstance(self.cache, AnalysisCache):
+        # A fallback (the LLM failed and the baseline answered) is not written under
+        # the model's key: it would be served on every later run until the TTL
+        # expired, so a transient provider failure would stop the model being tried.
+        if errors:
+            logger.info("Not caching a baseline fallback under the LLM cache key")
+        elif use_cache and isinstance(self.cache, AnalysisCache):
             logger.debug("Caching result for cache key prefix %s", cache_storage_key[:16])
             self.cache.set(
                 cache_storage_key,

@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Fixed
+- **The eval no longer scores a failed model run as the model's.** When the LLM call failed
+  (or the provider had no API key), the analyzer answered with the deterministic baseline and
+  `run_eval` scored that output as if the model had produced it; the report dropped
+  `metadata.used_baseline` and the error, so nothing showed it. An exception in one run also
+  aborted the whole eval. Each run entry now carries `outcome` (`ok`,
+  `fell_back_to_baseline` or `error`), `llm_requested`, `used_baseline` and `error` (the
+  exception, or the analyzer's fallback warnings); an exception is recorded as an `error`
+  run, with null scores, and the eval continues. The report gains a `health` block
+  (`attempted`, `ok`, `fell_back`, `errors`, …) and a `summary` block of headline mean
+  scores over the `ok` runs only. When more than 5% of runs fell back or errored
+  (`EVAL_MAX_UNHEALTHY_RUN_FRACTION`), `summary.scores` is null with a `withheld_reason`
+  and `calibration.status` is `"withheld"`, unless `eval --ignore-health` (or
+  `build_eval_report(..., ignore_health=True)`) is given. No-LLM baseline runs are `ok`,
+  not fallbacks. The printed table gains an Outcome column and a reason line for every run
+  that is not `ok`. The regression gate (`report_regressions`) also fails on a run that
+  errored, or fell back where the baseline report's run did not; the committed no-LLM
+  baseline, which predates outcomes, still loads and gates (a missing `outcome` reads as
+  `ok`). Existing report fields keep their names.
+- **The LLM result cache is keyed by provider and model.** The key held the schema
+  fingerprint, prompt version and system prompt only, so switching `--model` or provider on
+  an unchanged schema returned the previous model's cached answer. The model is now
+  resolved before the cache lookup and both are part of the key (new helper
+  `utils.llm_cache_segment`). Existing LLM cache entries miss once and are rewritten under
+  the new key; the no-LLM key is unchanged (the bare schema fingerprint).
+
 ## 0.15.2 — 2026-10-21
 
 ### Fixed

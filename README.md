@@ -145,7 +145,15 @@ report. The CI regression gate compares against the checked-in
 3.12 discriminator fix; PRD §3.12.3); any report you saved with `--report`
 also works as a baseline.
 
-Options: `--url`, `--user`, `--password`, `--database`, `--domains`, `--sample-limit`, `--timeout-ms`, `--scale`, `--no-cleanup`.
+Each run records its outcome: `ok`, `fell_back_to_baseline` (an LLM was requested but
+the deterministic baseline answered — the provider failed or had no API key), or
+`error` (the run raised; the eval carries on with the next run). The report's
+`health` block counts them, and its headline `summary.scores` and `calibration` are
+computed over the `ok` runs only. When more than 5% of runs fell back or errored those
+headline numbers are withheld (null, with `summary.withheld_reason`); pass
+`--ignore-health` to report them anyway.
+
+Options: `--url`, `--user`, `--password`, `--database`, `--domains`, `--sample-limit`, `--timeout-ms`, `--scale`, `--ignore-health`, `--no-cleanup`.
 
 Domains included: `healthcare`, `financial_fraud_detection`, `insurance`, `intelligence`, `network_asset_management`.
 

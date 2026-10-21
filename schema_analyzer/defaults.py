@@ -182,6 +182,11 @@ DEFAULT_EVAL_SAMPLE_LIMIT: int = 3
 DEFAULT_EVAL_SCALE: int = 5
 DEFAULT_EVAL_SEED: int = 1
 EVAL_DELTA_THRESHOLD: float = 0.005
+# Headline eval scores are withheld when more than this fraction of runs failed:
+# fell back to the baseline although an LLM was requested, or raised. A score built
+# from the runs that happened to succeed would otherwise read as the model's score.
+# `eval --ignore-health` reports them anyway.
+EVAL_MAX_UNHEALTHY_RUN_FRACTION: float = 0.05
 
 # Confidence calibration (eval feedback → reviewThreshold; PRD §3.12.3 / §6.5)
 # Number of equal-width bins over [0, 1] for the reliability curve.

@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 — 2026-10-21
+
+A minor version: the singularizer change below alters output, and arango-sparql-py's
+`[analyzer]` extra admits ASA only below 0.16.0, so consumers adopt it deliberately.
+
+### Changed
+- **One singularizer, which keeps a `-se` plural's `e` and leaves `-s` singulars alone.**
+  ASA had two that disagreed with each other and with relational-schema-analyzer's and
+  r2g's: `csi.naming.singularize` (CSI class names) turned `warehouses` into `warehous` and
+  `movies` into `movy`; `utils.singularize` (FK inference, type detection, quality checks,
+  eval scoring) turned `buses` into `buse` and `statuses` into `statuse`; both turned
+  `status` into `statu`, `analysis` into `analysi`, `news` into `new` and `series` into
+  `sery`. `csi.naming.singularize` now carries the rules shared with RSA and r2g
+  (arango-solutions-org/r2g-arango#30): `-es` is dropped only after a sibilant
+  (`addresses`, `boxes`, `batches`) or a singular that already ends in `s` (`statuses` ->
+  `status`), otherwise only the `s` goes (`warehouses` -> `warehouse`); `-ses` -> `-sis`
+  for `-is` words; `-ies` -> `-y` except `-ie` words; named sets cover invariant words,
+  singulars ending in `s` and a short irregular table (`people` -> `person`); only the last
+  word of a compound inflects. `utils.singularize` delegates to it. **Output change**: CSI
+  class names change for collections named with a `-se` plural (`warehouses` ->
+  `Warehouse`, was `Warehous`), an `-s` singular (`status` -> `Status`, was `Statu`) or an
+  `-ie` plural (`movies` -> `Movie`); FK inference, type detection, quality checks and eval
+  scoring change only for `-s` singulars and their plurals (`statuses`, `buses`, `status`,
+  `news`), which `utils.singularize` mangled and `<singular>_id` references to them were
+  missed. `apply_owl_naming(overrides=...)` remains the escape hatch.
+  `schema_analyzer/csi/naming_known_answers.py` is vendored from RSA (identical data);
+  `tests/test_naming_known_answers.py` checks both entry points against it.
 
 ### Fixed
 - **The eval no longer scores a failed model run as the model's.** When the LLM call failed

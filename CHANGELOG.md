@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.2 — 2026-10-21
+
 ### Fixed
 - **VCI detection no longer advertises an array-expanded edge index as a vertex-centric
   index.** `detect_vci` treated every persistent index rooted at `_from` / `_to` as a good

@@ -174,52 +174,18 @@ def analysis_cache_storage_key(physical_fingerprint: str, *, llm_cache_segment: 
     return sha256_hex(f"{physical_fingerprint}\n{llm_cache_segment}")
 
 
-_IE_SINGULAR_ROOTS = frozenset(
-    {
-        "movie",
-        "zombie",
-        "cookie",
-        "brownie",
-        "rookie",
-        "selfie",
-        "genie",
-        "smoothie",
-        "collie",
-        "magpie",
-        "birdie",
-        "calorie",
-        "prairie",
-        "reverie",
-        "sortie",
-        "lingerie",
-    }
-)
-
-
 def singularize(name: str) -> str:
     """Best-effort English singularization for collection/entity names.
 
-    Suffixes match case-insensitively, and a replacement letter follows the case of
-    the letter it replaces, so ``CUSTOMERS`` -> ``CUSTOMER`` and ``CATEGORIES`` ->
-    ``CATEGORY``. Upper-case names used to come back unchanged, which hid every
-    relationship to an upper-case collection from FK inference -- the fix
-    relational-schema-analyzer 0.9.0 and r2g 0.4.2 made to their copies.
-    ``csi.naming.singularize`` was already case-insensitive.
+    Delegates to :func:`schema_analyzer.csi.naming.singularize`, so FK
+    inference, type detection, quality checks and CSI class names agree. The
+    two used to be separate copies that disagreed (this one turned ``buses``
+    into ``buse``; the other turned ``warehouses`` into ``warehous``;
+    arango-solutions-org/r2g-arango#30). Surrounding whitespace is ignored.
     """
-    n = name.strip()
-    lower = n.lower()
-    if lower.endswith("ies") and len(n) > 3:
-        # Distinguish consonant+y→consonant+ies (city→cities) from root-ie+s (movie→movies).
-        # Words whose singular ends in "-ie" should just drop the "s".
-        without_s = n[:-1]
-        if without_s.lower() in _IE_SINGULAR_ROOTS:
-            return without_s
-        return n[:-3] + ("Y" if n[-3].isupper() else "y")
-    if lower.endswith("sses") and len(n) > 4:
-        return n[:-2]
-    if lower.endswith("s") and not lower.endswith("ss") and len(n) > 1:
-        return n[:-1]
-    return n
+    from .csi.naming import singularize as _singularize
+
+    return _singularize(name.strip())
 
 
 def pascal_case(name: str) -> str:

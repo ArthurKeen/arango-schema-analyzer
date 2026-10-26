@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- **`entityStrategy: "labels"` maps label arrays to a `LABELS` entity style.** Opt-in
+  (`analysisOptions.entityStrategy` / Python `entity_strategy="labels"`); behaves as `auto`
+  except that a collection whose type field holds label arrays, with sampled nodes carrying
+  more than one label, maps each primary label to
+  `{"style": "LABELS", "collectionName", "labelsField", "typeValue"}`, matched as
+  `typeValue IN doc[labelsField]`, so a node with several labels matches each of them.
+  Conceptual output is unchanged, and `auto` keeps emitting `LABEL`. `PhysicalMapping.aql_entity_match`
+  compiles the style; the response, request and CSI schemas (both copies) admit it. The
+  shape is shared with arango-query-core and arango-gql-gateway. `metadata.statistics`
+  counts each `LABELS` entity by its own label, not the whole shared collection. The
+  SPARQL vocabulary export, the Cypher resolution index and the OWL export (Turtle and
+  JSON-LD, as `phys:labelsField`) carry `labelsField`.
 - **CSI 1.1: `path` for values inside nested objects (#33).** A property mapping's
   `field` stays one literal attribute name (`"address.city"` is a single top-level
   attribute). The new `path` (one name per level, `["address", "city"]`) names a value

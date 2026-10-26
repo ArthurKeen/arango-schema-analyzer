@@ -273,8 +273,9 @@ class _AnalysisContext(NamedTuple):
     # real-name→token map when field-name masking is active; used to un-mask the
     # LLM response so the result carries real field names (PRD §4.3).
     field_name_map: dict[str, str] | None = None
-    # baseline entity modeling strategy: "auto" (LPG/PG heuristic) or "collection"
-    # (force one entity per collection — correct for pure property-graph schemas).
+    # baseline entity modeling strategy: "auto" (LPG/PG heuristic), "collection"
+    # (force one entity per collection — correct for pure property-graph schemas) or
+    # "labels" (as "auto", but label arrays map to LABELS-style entities).
     entity_strategy: str = "auto"
 
 
@@ -384,7 +385,7 @@ class AgenticSchemaAnalyzer:
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
         graph_scope: str | None = None,
-        entity_strategy: Literal["auto", "collection"] = "auto",
+        entity_strategy: Literal["auto", "collection", "labels"] = "auto",
         max_entity_types: int | None = None,
         min_type_value_count: int = 0,
         nested_field_depth: int = 0,
@@ -469,7 +470,9 @@ class AgenticSchemaAnalyzer:
             logger.info("No LLM provider configured; falling back to baseline inference")
             doc_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "document")
             edge_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "edge")
-            baseline = infer_baseline_from_snapshot(snapshot, collection_per_entity=entity_strategy == "collection")
+            baseline = infer_baseline_from_snapshot(
+                snapshot, collection_per_entity=entity_strategy == "collection", multi_label=entity_strategy == "labels"
+            )
             stats_holder: dict[str, Any] = {
                 "physicalMapping": baseline.get("physicalMapping", {}),
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
@@ -602,7 +605,7 @@ class AgenticSchemaAnalyzer:
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
         graph_scope: str | None = None,
-        entity_strategy: Literal["auto", "collection"] = "auto",
+        entity_strategy: Literal["auto", "collection", "labels"] = "auto",
         max_entity_types: int | None = None,
         min_type_value_count: int = 0,
         nested_field_depth: int = 0,
@@ -647,7 +650,9 @@ class AgenticSchemaAnalyzer:
         except SchemaAnalyzerError as e:
             logger.warning("LLM workflow failed, falling back to baseline: %s", e)
             baseline = infer_baseline_from_snapshot(
-                prep.snapshot, collection_per_entity=prep.entity_strategy == "collection"
+                prep.snapshot,
+                collection_per_entity=prep.entity_strategy == "collection",
+                multi_label=prep.entity_strategy == "labels",
             )
             data = {
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
@@ -781,7 +786,7 @@ class AgenticSchemaAnalyzer:
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
         graph_scope: str | None = None,
-        entity_strategy: Literal["auto", "collection"] = "auto",
+        entity_strategy: Literal["auto", "collection", "labels"] = "auto",
         max_entity_types: int | None = None,
         min_type_value_count: int = 0,
         nested_field_depth: int = 0,
@@ -827,7 +832,9 @@ class AgenticSchemaAnalyzer:
         except SchemaAnalyzerError as e:
             logger.warning("Async LLM workflow failed, falling back to baseline: %s", e)
             baseline = infer_baseline_from_snapshot(
-                prep.snapshot, collection_per_entity=prep.entity_strategy == "collection"
+                prep.snapshot,
+                collection_per_entity=prep.entity_strategy == "collection",
+                multi_label=prep.entity_strategy == "labels",
             )
             data = {
                 "conceptualSchema": baseline.get("conceptualSchema", {}),

@@ -150,3 +150,57 @@ def test_response_schema_admits_subclass_proposals_and_abstract_classes():
     }
     resp = {"contractVersion": "1", "operation": "analyze", "ok": True, "result": {"analysis": analysis}}
     assert validate_response_v1(resp) == []
+
+
+def test_labels_strategy_maps_label_arrays_to_labels_style():
+    snap = _snapshot({"Account": {"Customer": 30}}, {"Account": 30, "Order": 40})
+    out = infer_baseline_from_snapshot(snap, multi_label=True)
+    pm = out["physicalMapping"]["entities"]
+    account = pm["Account"]
+    assert (account["style"], account["collectionName"], account["labelsField"], account["typeValue"]) == (
+        "LABELS",
+        "nodes",
+        "labels",
+        "Account",
+    )
+    assert "typeField" not in account
+    assert pm["Order"]["style"] == "LABELS"
+    # Conceptual output is the same as under the default strategy.
+    assert out["conceptualSchema"] == infer_baseline_from_snapshot(snap)["conceptualSchema"]
+
+
+def test_labels_strategy_leaves_scalar_type_fields_as_label():
+    # No sampled node with more than one label: nothing to gain from LABELS.
+    out = infer_baseline_from_snapshot(_snapshot({}, {"Account": 30, "Order": 40}), multi_label=True)
+    assert {m["style"] for m in out["physicalMapping"]["entities"].values()} == {"LABEL"}
+
+
+def _labels_analysis() -> dict:
+    snap = _snapshot({"Account": {"Customer": 30}}, {"Account": 30, "Order": 40})
+    out = infer_baseline_from_snapshot(snap, multi_label=True)
+    return {
+        "conceptualSchema": out["conceptualSchema"],
+        "physicalMapping": out["physicalMapping"],
+        "metadata": {
+            "confidence": 0.5,
+            "timestamp": "2026-10-26T00:00:00Z",
+            "analyzedCollectionCounts": {"documentCollections": 1, "edgeCollections": 0},
+            "detectedPatterns": [],
+        },
+    }
+
+
+def test_labels_style_exports_name_the_labels_field():
+    # Without labelsField a consumer of these exports cannot build the IN filter.
+    from schema_analyzer import build_cypher_resolution_index, export_mapping
+    from schema_analyzer.owl_export import export_conceptual_model_as_jsonld, export_conceptual_model_as_owl_turtle
+
+    analysis = _labels_analysis()
+    classes = {c["label"]: c for c in export_mapping(analysis, "sparql")["classes"]}
+    assert classes["Account"]["physical"]["labelsField"] == "labels"
+    assert build_cypher_resolution_index(analysis)["entities"]["Account"]["labelsField"] == "labels"
+    ttl = export_conceptual_model_as_owl_turtle(analysis)
+    assert ':Account phys:labelsField "labels" .' in ttl
+    assert "phys:labelsField a owl:AnnotationProperty ." in ttl
+    nodes = {n["@id"]: n for n in export_conceptual_model_as_jsonld(analysis)["@graph"]}
+    assert nodes["Account"]["phys:labelsField"] == "labels"

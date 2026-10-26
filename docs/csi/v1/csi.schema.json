@@ -78,10 +78,11 @@
             "additionalProperties": true,
             "required": ["style"],
             "properties": {
-              "style": { "type": "string", "enum": ["COLLECTION", "LABEL"] },
+              "style": { "type": "string", "enum": ["COLLECTION", "LABEL", "LABELS"] },
               "collectionName": { "type": "string" },
               "typeField": { "type": "string" },
               "typeValue": { "type": "string" },
+              "labelsField": { "type": "string" },
               "properties": {
                 "type": "object",
                 "description": "Conceptual property name -> where its value is stored.",

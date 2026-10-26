@@ -126,6 +126,12 @@ def compute_statistics(
             type_field = ent_mapping.get("typeField")
             type_value = ent_mapping.get("typeValue")
             est = _safe_filtered_count(db, col, type_field, type_value)
+        elif style == "LABELS":
+            # A node may carry several labels: count the documents whose label array
+            # holds this one, as PhysicalMapping.aql_entity_match matches them.
+            est = _safe_filtered_count(
+                db, col, ent_mapping.get("labelsField"), ent_mapping.get("typeValue") or ent_name, in_array=True
+            )
         else:
             est = counts.get(col)
         if est is None:
@@ -237,8 +243,13 @@ def _safe_filtered_count(
     collection: str,
     type_field: Any,
     type_value: Any,
+    *,
+    in_array: bool = False,
 ) -> int | None:
     """COLLECT WITH COUNT where ``d[type_field] == type_value``.
+
+    With ``in_array``, where ``type_value IN d[type_field]`` instead (a ``LABELS``
+    entity, whose field holds a list of labels).
 
     Returns ``None`` on any AQL failure or when ``type_field`` /
     ``type_value`` are missing — the caller treats that as "this subset
@@ -249,9 +260,10 @@ def _safe_filtered_count(
     if type_value is None:
         return None
     try:
+        match = "@val IN d[@field]" if in_array else "d[@field] == @val"
         cursor = aql_execute(
             db,
-            "FOR d IN @@c FILTER d[@field] == @val COLLECT WITH COUNT INTO c RETURN c",
+            f"FOR d IN @@c FILTER {match} COLLECT WITH COUNT INTO c RETURN c",
             bind_vars={"@c": collection, "field": type_field, "val": type_value},
         )
         for row in cursor:

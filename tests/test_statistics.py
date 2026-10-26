@@ -181,6 +181,22 @@ def test_compute_statistics_label_style_entity_uses_filtered_count() -> None:
     assert out["entities"]["Person"]["estimated_count"] == 120
 
 
+def test_compute_statistics_labels_style_entity_counts_its_label_only() -> None:
+    # A LABELS entity shares its collection with other labels; the collection total
+    # (45 here) would overstate it.
+    db = _FakeDB({"nodes": 45}, {("nodes", "labels", "Account"): 25})
+    physical_mapping = {
+        "entities": {
+            "Account": {"style": "LABELS", "collectionName": "nodes", "labelsField": "labels", "typeValue": "Account"}
+        },
+        "relationships": {},
+    }
+    out = compute_statistics(db, {"collections": [{"name": "nodes", "type": "document"}]}, physical_mapping, {})
+    assert out is not None
+    assert out["entities"]["Account"]["estimated_count"] == 25
+    assert any("@val IN d[@field]" in q for q, _ in db.aql.calls)
+
+
 def test_compute_statistics_generic_with_type_uses_filtered_edge_count() -> None:
     snapshot = {
         "collections": [

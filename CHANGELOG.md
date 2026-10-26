@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 — 2026-10-26
+
+A minor version: the singularizer change below alters output, so consumers adopt it
+deliberately. arango-sparql-py's `[analyzer]` extra still admits ASA only below 0.16.0.
 
 ### Changed
 - **The singularizer consults a dictionary.** The 0.16.0 rules failed wherever nobody had

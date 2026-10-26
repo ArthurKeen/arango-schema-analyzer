@@ -419,7 +419,7 @@ Full **edge-interval time travel** for every conceptual entity (AOE-style `creat
 | **Fingerprint-continuity lower bound** | When the caller supplies a prior run's metadata (as `analyze_incremental` already accepts, §3.13.3) and the prior **shape fingerprint** equals the current one, `validTime.from` MUST be carried back to the earliest run in the unbroken chain, with `validTimeSource = fingerprint-continuity`. This is the collection-level analogue of `carry_forward_first_seen` (§3.13.2) and is the analyzer's only source of valid time stronger than observation. A `stats_changed` state (counts moved, shape did not) preserves the chain; a `shape_changed` state resets it to `observed`. |
 | **Predecessor linkage** | `predecessorFingerprint` = the prior run's shape fingerprint when a prior run was supplied, so a consumer can link versions without diffing. |
 | **Element-level stamps unchanged** | `firstSeenAt` / `lastValidatedAt` (§3.13.2) are transaction-time stamps and remain so. No element-level valid time is required: ArangoDB offers no per-field DDL signal, so collection-level granularity is the honest ceiling. |
-| **Emission** | Additive keys in the tool-contract v1 `metadata` and in CSI (`provenance.transactionTime`, `provenance.validTime`, `provenance.validTimeSource`, `provenance.predecessorFingerprint`). v1 consumers are unaffected; the CSI JSON Schema gains the keys as optional in a minor revision (CSI v1.1 in CDF's terms). `generatedAt` stays. |
+| **Emission** | Additive keys in the tool-contract v1 `metadata` and in CSI (`provenance.transactionTime`, `provenance.validTime`, `provenance.validTimeSource`, `provenance.predecessorFingerprint`). v1 consumers are unaffected; the CSI JSON Schema gains the keys as optional, additive fields; `csiVersion` stays "1" (CDF once called this revision "v1.1"; `csiVersion` "1.1" now means a document uses `path`, see the CSI 1.1 paragraph). `generatedAt` stays. |
 | **Redaction** | The new keys are timestamps and hashes; §4.3 redaction is unaffected. |
 
 **Acceptance:**
@@ -566,11 +566,33 @@ naming to the **conceptual** layer by default (`to_csi(owl_naming=True)`): entit
 names become singular PascalCase, and property and relationship names lowerCamel.
 Physical collection/field names are never renamed; each renamed conceptual
 property records its stored realization at
-`arangoPhysicalMapping.entities.<E>.properties.<name>.field`, so a transpiler can
+`arangoPhysicalMapping.entities.<E>.properties.<name>` (`field`, or `path` for a
+value inside a nested object), so a transpiler can
 resolve conceptual → physical names. `validate_csi` enforces the naming contract
 unless `naming=False`, and `to_csi` accepts override maps for irregular singulars.
 **Implementation**: `csi/naming.py` (`apply_owl_naming`), `csi/__init__.py`
 (`to_csi` / `validate_csi`).
+
+**CSI 1.1: nested values and strict property mappings (issue #33) — _shipped_.** A
+property mapping names where a value is stored. `field` is one literal attribute
+name, dots included (`"address.city"` is a single top-level attribute). `path` is a
+non-empty list, one name per level (`["address", "city"]`), for a value inside a
+nested object; each segment is 1-256 characters with no control character, backtick
+or backslash, and may itself contain a dot. A mapping carries at most one of the
+two; with neither, the property name is the attribute. A document that uses `path`
+declares `csiVersion` `"1.1"`, and only then: `to_csi` writes `"1"` otherwise, so an
+analyzer upgrade never breaks a reader that accepts only `"1"`, and a `"1"` document
+must not carry `path` at all. An **entity** property mapping is strict: besides
+`field` / `path` it may hold only `type`, `indexed`, `unique`, `required`, `role`,
+`sentinelValues`, `numericLike`, `sampleValues`, or a key starting with `x-`
+(`to_csi` keeps any other key as `x-<key>` rather than drop it), because an ignored
+location key is how a reader answers from the wrong field. Relationship property
+mappings and the rest of the document keep the additive rule. Names the analyzer
+left unresolved (see §6.2 nested-object fields) travel in
+`provenance.unresolvedFieldLocations`. `from_csi` accepts both versions and
+round-trips `path`. The reader side is arango-sparql-py#84; r2g vendors the schema.
+**Implementation**: `csi/v1/csi.schema.json` (`$defs/PropertyMapping`, the `allOf`
+version rule), `csi/__init__.py` (`_settle_property_mappings`), `csi/naming.py`.
 
 #### **6.1. Additional Mapping Styles**
 - `TRIPLE` — _Shipped in 0.7.0_ as an additive annotation
@@ -762,6 +784,23 @@ unless `naming=False`, and `to_csi` accepts override maps for irregular singular
   (`MIN_SHARD_FAMILY_SIZE`,
   `MIN_SHARD_FAMILY_SUFFIX_LEN`,
   `SHARD_FAMILY_DISCRIMINATOR_FIELDS`) live in `defaults.py`.
+- **Nested-object fields (issue #33).** _Shipped._ Opt-in
+  `analysisOptions.nestedFieldDepth` (1-5; default 0 keeps top-level-only sampling
+  and unchanged output) reads the same document sample whole and walks object-valued
+  fields to that depth. The analyzer decides once, at analysis time, whether each
+  dotted name is a value inside a nested object (mapped with `path`) or one literal
+  attribute (mapped with `field`); a literal dotted name takes no index information,
+  because an ArangoDB index on `a.b` means the nested attribute. The same rule settles
+  LLM-written mappings. **Flag, don't guess:** a dotted name one collection holds in
+  two shapes (a top-level attribute and a nested value, or two nestings) gets no
+  mapping and no conceptual property, and is reported under
+  `metadata.nestedFields.conflicts` (and CSI `provenance.unresolvedFieldLocations`)
+  for a person to settle. Lists of objects partway along a path are not walked yet
+  and are reported under `arraysSkipped`. The depth is part of the snapshot
+  fingerprint, and nested names are masked by `redaction.maskFieldNames`.
+  **Implementation**: `nested_fields.py`, `snapshot.py`
+  (`_detect_observed_fields_nested`), `baseline.py` (`_extract_properties`,
+  `_build_property_mapping`), `enrichment.py` (`_apply_nested_fields`).
 
 #### **6.3. Richer OWL Support**
 - Class hierarchies (`rdfs:subClassOf`):

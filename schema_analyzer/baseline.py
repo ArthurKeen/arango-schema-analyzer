@@ -10,6 +10,7 @@ from .defaults import (
     UNRESOLVED_ENDPOINT,
 )
 from .mapping import PhysicalMapping
+from .nested_fields import conflicted_names
 from .type_detection import (
     _pick_best_type_field,
     _type_values_for_field,
@@ -242,19 +243,56 @@ def _extract_properties(
         return []
 
     index_lookup = _build_index_lookup(col)
+    # Dotted names the sample holds in two shapes are left out entirely: a person
+    # settles them (metadata.nestedFields.conflicts), the analyzer never guesses.
+    conflicted = conflicted_names(observed)
 
     props: list[dict[str, Any]] = []
     for f in fields:
-        if not isinstance(f, str) or not f:
+        if not isinstance(f, str) or not f or f in conflicted:
             continue
         prop: dict[str, Any] = {"name": f, "type": "string"}
-        idx_info = index_lookup.get(f)
+        # An ArangoDB index field "a.b" means the nested attribute, never a literal
+        # top-level "a.b", so a dotted literal name takes no index information.
+        idx_info = index_lookup.get(f) if "." not in f else None
+        if idx_info:
+            prop["indexed"] = True
+            if idx_info.get("unique"):
+                prop["unique"] = True
+        props.append(prop)
+
+    for path in _nested_paths(observed, type_value):
+        name = ".".join(path)
+        if name in conflicted:
+            continue
+        prop = {"name": name, "type": "string", "path": list(path)}
+        idx_info = index_lookup.get(name)
         if idx_info:
             prop["indexed"] = True
             if idx_info.get("unique"):
                 prop["unique"] = True
         props.append(prop)
     return props
+
+
+def _nested_paths(observed: dict[str, Any], type_value: str | None) -> list[tuple[str, ...]]:
+    """Nested paths the snapshot found for this entity (issue #33; empty when off)."""
+    raw: list[Any] = []
+    by_type = observed.get("nested_paths_by_type")
+    if type_value and isinstance(by_type, dict):
+        raw = by_type.get(type_value) or []
+    elif isinstance(observed.get("nested_paths"), list):
+        raw = observed["nested_paths"]
+    elif isinstance(by_type, dict):
+        # collection_per_entity over a discriminated collection: the union, as for fields.
+        raw = [p for bucket in by_type.values() if isinstance(bucket, list) for p in bucket]
+    paths = {tuple(p) for p in raw if isinstance(p, list) and len(p) > 1 and all(isinstance(s, str) and s for s in p)}
+    return sorted(paths)
+
+
+def _conceptual_properties(props: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The conceptual copy of ``props``: where a value is stored belongs to the mapping."""
+    return [{k: v for k, v in p.items() if k != "path"} for p in props]
 
 
 _VCI_INDEX_TYPES: frozenset[str] = frozenset({"vci", "vertex_centric_index"})
@@ -328,7 +366,8 @@ def _build_property_mapping(props: list[dict[str, Any]]) -> dict[str, dict[str, 
         name = p.get("name")
         if not isinstance(name, str) or not name:
             continue
-        entry: dict[str, Any] = {"field": name}
+        path = p.get("path")
+        entry: dict[str, Any] = {"path": list(path)} if isinstance(path, list) and len(path) > 1 else {"field": name}
         if p.get("indexed"):
             entry["indexed"] = True
         if p.get("unique"):
@@ -412,7 +451,11 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
             for raw in _iter_type_values(col, type_field):
                 ent_name = pascal_case(raw)
                 props = _extract_properties(col, type_value=raw)
-                entity: dict[str, Any] = {"name": ent_name, "labels": [ent_name], "properties": props}
+                entity: dict[str, Any] = {
+                    "name": ent_name,
+                    "labels": [ent_name],
+                    "properties": _conceptual_properties(props),
+                }
                 if cooccurrence.get(raw):
                     _apply_secondary_labels(
                         entity,
@@ -445,7 +488,7 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
                 detected_patterns.append("PG_ENTITY_COLLECTION")
             ent_name = col.get("inferred_entity_type") or pascal_case(collection_name)
             props = _extract_properties(col)
-            cs.entities.append({"name": ent_name, "labels": [ent_name], "properties": props})
+            cs.entities.append({"name": ent_name, "labels": [ent_name], "properties": _conceptual_properties(props)})
             ent_mapping = {"style": "COLLECTION", "collectionName": collection_name}
             if col_indexes:
                 ent_mapping["indexes"] = col_indexes
@@ -493,7 +536,7 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
                         "type": rel_type,
                         "fromEntity": from_ent,
                         "toEntity": to_ent,
-                        "properties": props,
+                        "properties": _conceptual_properties(props),
                     }
                 )
                 rel_mapping: dict[str, Any] = {
@@ -524,7 +567,7 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any], *, collection_per_ent
                     "type": rel_type,
                     "fromEntity": from_ent,
                     "toEntity": to_ent,
-                    "properties": props,
+                    "properties": _conceptual_properties(props),
                 }
             )
             rel_mapping = {"style": "DEDICATED_COLLECTION", "edgeCollectionName": collection_name}

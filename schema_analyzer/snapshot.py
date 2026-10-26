@@ -27,6 +27,7 @@ from .defaults import (
     SNAPSHOT_FORMAT_VERSION,
 )
 from .errors import SchemaAnalyzerError
+from .nested_fields import nested_depth, summarize_documents
 from .type_detection import (
     EDGE_FROM_TYPE_FIELDS,
     EDGE_TO_TYPE_FIELDS,
@@ -245,15 +246,26 @@ def _detect_observed_fields(
     type_field: str | None = None,
     type_values: list[str] | None = None,
     is_edge: bool = False,
+    nested_field_depth: int = 0,
 ) -> dict[str, Any]:
     """
     Detect property fields for a collection by sampling document attributes.
     For type-discriminated collections, detects per type value.
+
+    With ``nested_field_depth`` > 0 (issue #33) the same sample is read whole and
+    walked into nested objects, adding ``nested_paths`` (or ``nested_paths_by_type``),
+    ``nested_conflicts`` (dotted names held in two shapes, collection-wide) and
+    ``nested_arrays_skipped``. Depth 0 keeps the ``ATTRIBUTES(d)`` pass and output.
     """
     exclude = set(_SYSTEM_FIELDS)
     if type_field:
         exclude.add(type_field)
         exclude.add("labels")
+
+    if nested_field_depth > 0:
+        return _detect_observed_fields_nested(
+            db, collection_name, exclude, type_field=type_field, type_values=type_values, depth=nested_field_depth
+        )
 
     if type_field and type_values:
         result: dict[str, list[str]] = {}
@@ -293,6 +305,69 @@ def _detect_observed_fields(
             return {"fields": sorted(keys_all)}
         except Exception:
             return {}
+
+
+def _detect_observed_fields_nested(
+    db: StandardDatabase,
+    collection_name: str,
+    exclude: set[str],
+    *,
+    type_field: str | None,
+    type_values: list[str] | None,
+    depth: int,
+) -> dict[str, Any]:
+    """:func:`_detect_observed_fields` with a look into nested objects (same sample)."""
+    all_docs: list[Any] = []
+    if type_field and type_values:
+        by_type: dict[str, list[str]] = {}
+        paths_by_type: dict[str, list[list[str]]] = {}
+        for tv in type_values:
+            try:
+                docs = list(
+                    aql_execute(
+                        db,
+                        "FOR d IN @@c FILTER " + _PRIMARY.format(x="d[@field]") + " == @val LIMIT @lim RETURN d",
+                        bind_vars={
+                            "@c": collection_name,
+                            "field": type_field,
+                            "val": tv,
+                            "lim": _PROPERTY_SAMPLE_LIMIT,
+                        },
+                    )
+                )
+            except Exception:
+                continue
+            bucket = summarize_documents(docs, depth, exclude=exclude)
+            by_type[str(tv)] = bucket["fields"]
+            if bucket["paths"]:
+                paths_by_type[str(tv)] = bucket["paths"]
+            all_docs.extend(docs)
+        out: dict[str, Any] = {"by_type": by_type}
+        if paths_by_type:
+            out["nested_paths_by_type"] = paths_by_type
+    else:
+        try:
+            all_docs = list(
+                aql_execute(
+                    db,
+                    "FOR d IN @@c LIMIT @lim RETURN d",
+                    bind_vars={"@c": collection_name, "lim": _PROPERTY_SAMPLE_LIMIT},
+                )
+            )
+        except Exception:
+            return {}
+        flat = summarize_documents(all_docs, depth, exclude=exclude)
+        out = {"fields": flat["fields"]}
+        if flat["paths"]:
+            out["nested_paths"] = flat["paths"]
+    # Conflicts and skipped lists are judged over the whole collection's sample: one
+    # collection holding both shapes under a name is what a person has to settle.
+    whole = summarize_documents(all_docs, depth, exclude=exclude)
+    if whole["conflicts"]:
+        out["nested_conflicts"] = whole["conflicts"]
+    if whole["arrays_skipped"]:
+        out["nested_arrays_skipped"] = whole["arrays_skipped"]
+    return out
 
 
 def _detect_edge_endpoint_type_fields(
@@ -835,6 +910,7 @@ def snapshot_physical_schema(
     graph_scope: str | None = None,
     sample_value_top_k: int | None = None,
     min_type_value_count: int = 0,
+    nested_field_depth: int = 0,
 ) -> dict[str, Any]:
     """
     Deterministic physical schema snapshot using python-arango Database.
@@ -855,7 +931,14 @@ def snapshot_physical_schema(
     Default ``None`` keeps ``SAMPLE_VALUE_TOP_K``. When raised past
     ``MAX_TYPE_FIELD_DISTINCT_VALUES``, the discriminator acceptance bound
     scales with it so the extra observed values don't disqualify the field.
+
+    ``nested_field_depth`` (0-5, default 0 = off; issue #33) also walks the sampled
+    documents into nested objects, so each collection's ``observed_fields`` gains the
+    nested paths, the dotted names held in two shapes, and the lists of objects not
+    walked. The depth is recorded on the snapshot, so it is part of the fingerprint
+    and a cached analysis made without it is never reused.
     """
+    depth = nested_depth(nested_field_depth)
     top_k = sample_value_top_k if isinstance(sample_value_top_k, int) and sample_value_top_k > 0 else SAMPLE_VALUE_TOP_K
     floor = min_type_value_count if isinstance(min_type_value_count, int) and min_type_value_count > 0 else 0
     # In full-label-set mode the discriminator legitimately has thousands of
@@ -890,6 +973,8 @@ def snapshot_physical_schema(
     }
     if floor:
         snapshot["min_type_value_count"] = floor
+    if depth:
+        snapshot["nested_field_depth"] = depth
 
     # ── Phase 1: Collect metadata for every collection ──────────────────
     entries: list[dict[str, Any]] = []
@@ -977,6 +1062,7 @@ def snapshot_physical_schema(
             type_field=best_field,
             type_values=type_values,
             is_edge=is_edge,
+            nested_field_depth=depth,
         )
 
     # ── Phase 5: Full document sampling (optional) ──────────────────────

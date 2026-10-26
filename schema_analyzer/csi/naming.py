@@ -334,7 +334,10 @@ def apply_owl_naming(
                 entry = prop_map.get(p_old) or prop_map.get(p_new) or {}
                 if not isinstance(entry, dict):
                     entry = {}
-                entry.setdefault("field", p_old)
+                # A nested value already names its location with ``path``; adding
+                # ``field`` too would make the mapping invalid (never both, CSI 1.1).
+                if "path" not in entry:
+                    entry.setdefault("field", p_old)
                 new_prop_map[p_new] = entry
             # Preserve any pre-existing mapped properties we didn't rename.
             for k, v in prop_map.items():

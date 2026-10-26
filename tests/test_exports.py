@@ -164,10 +164,16 @@ def test_external_schema_file_matches_inline_schema() -> None:
         Path(__file__).resolve().parents[1] / "schema_analyzer" / "tool_contract" / "v1" / "response.schema.json"
     )
     ext = json.loads(schema_path.read_text())
-    # Spot-check: the property items now require "field"
+    # Spot-check: a property item names its location with exactly one of "field" or
+    # "path" (issue #33), and the file and the inline validator agree on that rule.
+    from schema_analyzer.validation import _PROPERTY_MAPPING_SCHEMA
+
     pm = ext["$defs"]["AnalysisOutput"]["properties"]["physicalMapping"]
     ent_item = pm["properties"]["entities"]["additionalProperties"]
     rel_item = pm["properties"]["relationships"]["additionalProperties"]
-    assert ent_item["properties"]["properties"]["additionalProperties"]["required"] == ["field"]
-    assert rel_item["properties"]["properties"]["additionalProperties"]["required"] == ["field"]
+    for item in (ent_item, rel_item):
+        prop = item["properties"]["properties"]["additionalProperties"]
+        assert prop["anyOf"] == _PROPERTY_MAPPING_SCHEMA["anyOf"] == [{"required": ["field"]}, {"required": ["path"]}]
+        assert prop["not"] == _PROPERTY_MAPPING_SCHEMA["not"] == {"required": ["field", "path"]}
+        assert prop["properties"] == _PROPERTY_MAPPING_SCHEMA["properties"]
     assert rel_item["not"] == {"required": ["collectionName"]}

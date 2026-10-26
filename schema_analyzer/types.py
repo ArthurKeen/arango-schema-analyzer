@@ -110,6 +110,11 @@ class AnalysisMetadata(BaseModel):
     # detail lives under physicalMapping.relationships[type].vci. Absent when
     # no VCI signals were found.
     vci: dict[str, Any] | None = Field(default=None, alias="vci")
+    # Populated when the snapshot looked inside nested objects (nested_fields.py,
+    # issue #33): the depth, how many property mappings were written as ``path``,
+    # dotted names held in two shapes (left unmapped for a person to settle), and
+    # lists of objects not walked. Absent when nestedFieldDepth was 0.
+    nested_fields: dict[str, Any] | None = Field(default=None, alias="nestedFields")
     # Populated by the RDF-topology detector (rdf_topology.py, PRD §6.1/§6.2).
     # Classifies whether the schema is stored as RDF triples / rdf:type edges
     # (the TRIPLE mapping style) with supporting evidence. Absent when the

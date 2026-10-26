@@ -130,6 +130,13 @@
             }
           }
         },
+        "nestedFieldDepth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 0,
+          "description": "Look this many levels inside object-valued fields of the sampled documents (issue #33). A value inside a nested object is mapped with `path` (one name per level); a top-level attribute whose name contains a dot stays a literal `field`. A dotted name the collection holds in both shapes is left unmapped and reported under metadata.nestedFields.conflicts for a person to settle. Lists of objects are not walked (reported under arraysSkipped). 0 (default) keeps today's top-level-only sampling and output."
+        },
         "graphScope": {
           "type": "string",
           "minLength": 1,

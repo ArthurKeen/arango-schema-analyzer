@@ -179,6 +179,23 @@ def _uses_path(physical: Any) -> bool:
     return False
 
 
+def _prefix_unknown_keys(entry: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
+    """*entry* with each key CSI does not allow kept under an ``x-`` prefix.
+
+    The prefix is repeated until the key is free (``description`` beside an existing
+    ``x-description`` becomes ``x-x-description``), so no value is overwritten.
+    """
+    out = {k: v for k, v in entry.items() if k in allowed or k.startswith("x-")}
+    for k, v in entry.items():
+        if k in allowed or k.startswith("x-"):
+            continue
+        key = f"x-{k}"
+        while key in out:
+            key = f"x-{key}"
+        out[key] = v
+    return out
+
+
 def _settle_property_mappings(doc: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
     """Make the document's property mappings valid CSI and pick its version (issue #33).
 
@@ -213,7 +230,7 @@ def _settle_property_mappings(doc: dict[str, Any], metadata: dict[str, Any]) -> 
                 continue
             for name, entry in list(props.items()):
                 if isinstance(entry, dict):
-                    props[name] = {(k if k in allowed or k.startswith("x-") else f"x-{k}"): v for k, v in entry.items()}
+                    props[name] = _prefix_unknown_keys(entry, allowed)
     if conflicts:
         doc.setdefault("provenance", {})["unresolvedFieldLocations"] = conflicts
     doc["csiVersion"] = CSI_VERSION_NESTED if _uses_path(doc.get("arangoPhysicalMapping")) else CSI_VERSION

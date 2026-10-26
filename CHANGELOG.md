@@ -40,8 +40,17 @@
 ### Changed
 - **The tool contract accepts `path` in property mappings.** In both response-schema
   copies and the LLM-output validator, `field` becomes "`field` or `path`, not both",
-  and `metadata.nestedFields` is declared. The OWL export no longer writes
-  `phys:attributeName` for a `path` mapping, which has no single stored attribute.
+  and `metadata.nestedFields` is declared.
+- **Exports carry `path`.**
+  - **OWL** (Turtle and JSON-LD) writes `phys:attributePath`, a JSON array such as
+    `["address", "city"]`, for a nested value, in place of `phys:attributeName`.
+    This is the annotation arango-sparql-py#84 reads; without either one, a reader
+    would fall back to the property's local name and find nothing. A one-level
+    `path` is written as `phys:attributeName`.
+  - **The SPARQL vocabulary export** (`export_mapping(target="sparql")`) adds `path`
+    to a datatype property that has one.
+- **`to_csi` never overwrites an `x-` key.** When a mapping already holds
+  `x-description`, an unknown `description` is kept as `x-x-description`.
 
 ## 0.17.0 — 2026-10-26
 

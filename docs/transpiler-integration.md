@@ -108,6 +108,11 @@ Surface `error.message` as a diagnostic; do not synthesize a fallback query.
    bound object. This is the piece that lets literal-valued patterns resolve;
    without it a SPARQL transpiler can only handle entity/relationship patterns.
 
+A datatype property for a value inside a nested object also carries `path`, one
+name per level (`"path": ["address", "city"]`). Read it instead of `attribute`:
+`RETURN s.address.city`, never `` s.`address.city` `` (see "Values inside nested
+objects" below). The OWL export writes the same location as `phys:attributePath`.
+
 `domain`/`range`/IRIs are absent only when the source analysis lacks an endpoint;
 fall back to `physicalMapping` or report an unresolved pattern. The same datatype
 predicate IRI may appear under multiple `domain`s (a property reused across

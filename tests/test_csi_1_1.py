@@ -296,11 +296,48 @@ def test_out_of_range_depth_is_refused_by_the_contract():
     assert resp["ok"] is False
 
 
-def test_owl_export_names_no_stored_attribute_for_a_path():
-    from schema_analyzer.owl_export import export_conceptual_model_as_owl_turtle
+def test_owl_export_writes_attribute_path_for_a_nested_value():
+    import json
 
-    ttl = export_conceptual_model_as_owl_turtle(
-        _analysis({"address.city": {"path": ["address", "city"]}, "full_name": {"field": "fullName"}})
+    from schema_analyzer.owl_export import export_conceptual_model_as_jsonld, export_conceptual_model_as_owl_turtle
+
+    analysis = _analysis(
+        {"address.city": {"path": ["address", "city"]}, "full_name": {"field": "fullName"}, "nick": {"path": ["nk"]}}
     )
+    ttl = export_conceptual_model_as_owl_turtle(analysis)
     assert 'phys:attributeName "fullName"' in ttl
     assert 'attributeName "address.city"' not in ttl  # no single stored attribute to name
+    # Without a location, a reader (arango-sparql-py#84) would fall back to the local
+    # name and read a top-level `address_city` that does not exist.
+    assert ':address_city phys:attributePath "[\\"address\\", \\"city\\"]" .' in ttl
+    assert "phys:attributePath a owl:AnnotationProperty ." in ttl
+    assert ':nick phys:attributeName "nk" .' in ttl  # a one-level path is just a field
+
+    nodes = {n["@id"]: n for n in export_conceptual_model_as_jsonld(analysis)["@graph"]}
+    assert json.loads(nodes["address_city"]["phys:attributePath"]) == ["address", "city"]
+    assert "phys:attributeName" not in nodes["address_city"]
+
+
+def test_sparql_export_carries_the_path_of_a_nested_value():
+    from schema_analyzer import export_mapping
+
+    out = export_mapping(
+        _analysis({"address.city": {"path": ["address", "city"]}, "name": {"field": "name"}}), "sparql"
+    )
+    props = {p["label"]: p for p in out["datatypeProperties"]}
+    assert props["address.city"]["path"] == ["address", "city"]
+    assert "path" not in props["name"]
+    resp = {"contractVersion": "1", "operation": "export", "ok": True, "result": {"export": out}}
+    assert validate_response_v1(resp) == []
+
+
+def test_to_csi_never_overwrites_an_existing_x_key():
+    csi = to_csi(
+        _analysis({"name": {"field": "name", "x-description": "mine", "description": "llm"}}), owl_naming=False
+    )
+    assert csi["arangoPhysicalMapping"]["entities"]["Person"]["properties"]["name"] == {
+        "field": "name",
+        "x-description": "mine",
+        "x-x-description": "llm",
+    }
+    assert validate_csi(csi) == []

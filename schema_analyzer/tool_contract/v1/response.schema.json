@@ -831,6 +831,12 @@
               "label": { "type": "string" },
               "domain": { "type": "string" },
               "attribute": { "type": "string" },
+              "path": {
+                "description": "Present when the value sits inside a nested object (issue #33): one name per level. Read it instead of `attribute`, whose dots would otherwise be taken as one literal name.",
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              },
               "physical": { "type": "object", "additionalProperties": true }
             }
           }

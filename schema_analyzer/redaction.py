@@ -125,9 +125,10 @@ def _mask_value_counts(value_counts: dict[str, Any], token_map: dict[str, str]) 
 
 
 def _mask_observed_fields(observed: dict[str, Any], token_map: dict[str, str]) -> None:
-    by_type = observed.get("by_type")
-    if isinstance(by_type, dict):
-        observed["by_type"] = {token_map.get(str(k), str(k)): v for k, v in by_type.items()}
+    for key in ("by_type", "nested_paths_by_type"):
+        by_type = observed.get(key)
+        if isinstance(by_type, dict):
+            observed[key] = {token_map.get(str(k), str(k)): v for k, v in by_type.items()}
 
 
 def _mask_edge_endpoints(endpoints: dict[str, Any], token_map: dict[str, str]) -> None:
@@ -186,6 +187,14 @@ def build_field_name_map(collections: list[Any]) -> dict[str, str]:
                     if isinstance(field_list, list):
                         for f in field_list:
                             _add(f)
+            # Nested lookup (issue #33): every path segment is a field name, and a
+            # conflict's dotted name is one too (it may match no single segment).
+            for path in _nested_paths_of(observed):
+                for segment in path:
+                    _add(segment)
+            for conflict in observed.get("nested_conflicts") or []:
+                if isinstance(conflict, dict):
+                    _add(conflict.get("name"))
         indexes = entry.get("indexes")
         if isinstance(indexes, list):
             for idx in indexes:
@@ -201,6 +210,46 @@ def build_field_name_map(collections: list[Any]) -> dict[str, str]:
                             _add(k)
 
     return {name: f"{FIELD_NAME_TOKEN_PREFIX}{i}" for i, name in enumerate(sorted(names))}
+
+
+def _nested_paths_of(observed: dict[str, Any]) -> list[list[Any]]:
+    """Every path list under the nested-lookup keys of ``observed_fields``."""
+    out: list[list[Any]] = []
+    for key in ("nested_paths", "nested_arrays_skipped"):
+        out.extend(p for p in observed.get(key) or [] if isinstance(p, list))
+    by_type = observed.get("nested_paths_by_type")
+    if isinstance(by_type, dict):
+        for bucket in by_type.values():
+            out.extend(p for p in bucket or [] if isinstance(p, list))
+    for conflict in observed.get("nested_conflicts") or []:
+        if isinstance(conflict, dict):
+            out.extend(p for p in conflict.get("locations") or [] if isinstance(p, list))
+    return out
+
+
+def _mask_nested_names(observed: dict[str, Any], name_map: dict[str, str]) -> None:
+    def mask_path(p: Any) -> Any:
+        return [_mask_name(seg, name_map) for seg in p] if isinstance(p, list) else p
+
+    for key in ("nested_paths", "nested_arrays_skipped"):
+        if isinstance(observed.get(key), list):
+            observed[key] = [mask_path(p) for p in observed[key]]
+    by_type = observed.get("nested_paths_by_type")
+    if isinstance(by_type, dict):
+        observed["nested_paths_by_type"] = {
+            k: [mask_path(p) for p in v] if isinstance(v, list) else v for k, v in by_type.items()
+        }
+    if isinstance(observed.get("nested_conflicts"), list):
+        observed["nested_conflicts"] = [
+            {
+                **c,
+                "name": _mask_name(c.get("name"), name_map),
+                "locations": [mask_path(p) for p in c.get("locations") or []],
+            }
+            if isinstance(c, dict)
+            else c
+            for c in observed["nested_conflicts"]
+        ]
 
 
 def _mask_name(name: Any, name_map: dict[str, str]) -> Any:
@@ -231,6 +280,7 @@ def _mask_field_names_in_entry(entry: dict[str, Any], name_map: dict[str, str]) 
             observed["by_type"] = {
                 k: ([_mask_name(f, name_map) for f in v] if isinstance(v, list) else v) for k, v in by_type.items()
             }
+        _mask_nested_names(observed, name_map)
 
     indexes = entry.get("indexes")
     if isinstance(indexes, list):

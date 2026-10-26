@@ -29,6 +29,16 @@ def _physical_block(mapping: Any, keys: tuple[str, ...]) -> dict[str, Any]:
     return {k: mapping[k] for k in keys if k in mapping and mapping[k] is not None}
 
 
+def _property_path(mapping: Any, prop: str) -> list[str] | None:
+    """The ``path`` of *prop* in an entity mapping, or ``None`` when it has none."""
+    props = mapping.get("properties") if isinstance(mapping, dict) else None
+    spec = props.get(prop) if isinstance(props, dict) else None
+    path = spec.get("path") if isinstance(spec, dict) else None
+    if isinstance(path, list) and path and all(isinstance(seg, str) for seg in path):
+        return list(path)
+    return None
+
+
 def export_mapping(analysis: AnalysisResult | dict[str, Any], target: str = "cypher") -> dict[str, Any]:
     """Export the analysis into a stable JSON contract consumable by transpilers.
 
@@ -109,18 +119,22 @@ def _export_sparql(
             if not isinstance(attr, str) or not attr:
                 continue
             local = _sanitize_iri_local(attr)
-            datatype_properties.append(
-                {
-                    "iri": f"{base_iri}{local}",
-                    "localName": local,
-                    "label": attr,
-                    "domain": domain_iri,
-                    # The physical document field the literal lives in, plus the
-                    # owning entity's collection resolution.
-                    "attribute": attr,
-                    "physical": phys,
-                }
-            )
+            dp: dict[str, Any] = {
+                "iri": f"{base_iri}{local}",
+                "localName": local,
+                "label": attr,
+                "domain": domain_iri,
+                # The physical document field the literal lives in, plus the
+                # owning entity's collection resolution.
+                "attribute": attr,
+                "physical": phys,
+            }
+            # A value inside a nested object (issue #33): one name per level, so a
+            # dotted ``attribute`` is never read as one literal name by mistake.
+            path = _property_path(pm_entities.get(name), attr)
+            if path is not None:
+                dp["path"] = path
+            datatype_properties.append(dp)
 
     object_properties: list[dict[str, Any]] = []
     for r in rels:

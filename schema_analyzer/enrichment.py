@@ -23,6 +23,7 @@ from .arango_products import detect_arango_products
 from .graph_membership import compute_graph_membership
 from .graphrag import detect_graphrag
 from .multitenancy import classify_multitenancy
+from .nested_fields import apply_field_locations
 from .rdf_topology import detect_rdf_topology
 from .reconcile import reconcile_physical_mapping, strip_unknown_collection_names
 from .shard_families import detect_shard_families
@@ -105,6 +106,17 @@ def _apply_reconciliation(
         len(backfilled),
         backfilled,
     )
+
+
+def _apply_nested_fields(data: dict[str, Any], snapshot: dict[str, Any]) -> None:
+    """Settle field vs path for every property mapping and stamp ``metadata.nestedFields``.
+
+    Issue #33. A no-op (nothing written) unless the snapshot looked inside nested
+    objects (``nestedFieldDepth`` > 0), so default output stays byte-identical.
+    """
+    report = apply_field_locations(data, snapshot)
+    if report is not None:
+        _metadata(data)["nestedFields"] = report
 
 
 def _apply_sharding_profile(

@@ -4,6 +4,20 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+#: Where a property is stored: ``field`` (one literal attribute name, dots included) or
+#: ``path`` (one name per level, for a value inside a nested object; issue #33).
+_PROPERTY_MAPPING_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "anyOf": [{"required": ["field"]}, {"required": ["path"]}],
+    "not": {"required": ["field", "path"]},
+    "properties": {
+        "field": {"type": "string"},
+        "path": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "indexed": {"type": "boolean"},
+        "unique": {"type": "boolean"},
+    },
+}
+
 ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
     "$id": "https://arangodb.com/schema-analyzer/analysis-output.schema.json",
     "type": "object",
@@ -79,15 +93,7 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                             },
                             "properties": {
                                 "type": "object",
-                                "additionalProperties": {
-                                    "type": "object",
-                                    "required": ["field"],
-                                    "properties": {
-                                        "field": {"type": "string"},
-                                        "indexed": {"type": "boolean"},
-                                        "unique": {"type": "boolean"},
-                                    },
-                                },
+                                "additionalProperties": _PROPERTY_MAPPING_SCHEMA,
                             },
                         },
                     },
@@ -122,15 +128,7 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                             },
                             "properties": {
                                 "type": "object",
-                                "additionalProperties": {
-                                    "type": "object",
-                                    "required": ["field"],
-                                    "properties": {
-                                        "field": {"type": "string"},
-                                        "indexed": {"type": "boolean"},
-                                        "unique": {"type": "boolean"},
-                                    },
-                                },
+                                "additionalProperties": _PROPERTY_MAPPING_SCHEMA,
                             },
                         },
                     },

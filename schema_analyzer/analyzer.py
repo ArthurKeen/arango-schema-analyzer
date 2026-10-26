@@ -35,6 +35,7 @@ from .enrichment import (
     _apply_graph_membership,
     _apply_graphrag,
     _apply_multitenancy,
+    _apply_nested_fields,
     _apply_rdf_topology,
     _apply_reconciliation,
     _apply_shard_families,
@@ -387,6 +388,7 @@ class AgenticSchemaAnalyzer:
         entity_strategy: Literal["auto", "collection", "labels"] = "auto",
         max_entity_types: int | None = None,
         min_type_value_count: int = 0,
+        nested_field_depth: int = 0,
         _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult | _AnalysisContext:
         """Shared setup for sync and async analysis paths.
@@ -403,6 +405,7 @@ class AgenticSchemaAnalyzer:
             graph_scope=graph_scope,
             sample_value_top_k=max_entity_types,
             min_type_value_count=min_type_value_count,
+            nested_field_depth=nested_field_depth,
         )
         snapshot["generated_at"] = now_iso()
         fingerprint = fingerprint_physical_schema(snapshot, include_samples=False)
@@ -475,6 +478,7 @@ class AgenticSchemaAnalyzer:
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
                 "metadata": {"detectedPatterns": list(baseline.get("detectedPatterns", []))},
             }
+            _apply_nested_fields(stats_holder, snapshot)
             _apply_sharding_profile(stats_holder, snapshot)
             _apply_shard_families(stats_holder)
             _apply_multitenancy(stats_holder, snapshot)
@@ -533,6 +537,7 @@ class AgenticSchemaAnalyzer:
                 multitenancy=stats_holder["metadata"].get("multitenancy"),
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
                 vci=stats_holder["metadata"].get("vci"),
+                nested_fields=stats_holder["metadata"].get("nestedFields"),
                 rdf_topology=stats_holder["metadata"].get("rdfTopology"),
                 graph_rag=stats_holder["metadata"].get("graphRag"),
                 graph_membership=stats_holder["metadata"].get("graphMembership"),
@@ -603,6 +608,7 @@ class AgenticSchemaAnalyzer:
         entity_strategy: Literal["auto", "collection", "labels"] = "auto",
         max_entity_types: int | None = None,
         min_type_value_count: int = 0,
+        nested_field_depth: int = 0,
         _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         prov = _ProvenanceStamp(run_id=str(uuid.uuid4()), started_at=now_iso())
@@ -618,6 +624,7 @@ class AgenticSchemaAnalyzer:
             entity_strategy=entity_strategy,
             max_entity_types=max_entity_types,
             min_type_value_count=min_type_value_count,
+            nested_field_depth=nested_field_depth,
             _snapshot=_snapshot,
         )
         if isinstance(prep, AnalysisResult):
@@ -659,6 +666,7 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_nested_fields(data, prep.snapshot)
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
@@ -781,6 +789,7 @@ class AgenticSchemaAnalyzer:
         entity_strategy: Literal["auto", "collection", "labels"] = "auto",
         max_entity_types: int | None = None,
         min_type_value_count: int = 0,
+        nested_field_depth: int = 0,
         _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         """Async version of analyze_physical_schema. Requires provider with agenerate()."""
@@ -797,6 +806,7 @@ class AgenticSchemaAnalyzer:
             entity_strategy=entity_strategy,
             max_entity_types=max_entity_types,
             min_type_value_count=min_type_value_count,
+            nested_field_depth=nested_field_depth,
             _snapshot=_snapshot,
         )
         if isinstance(prep, AnalysisResult):
@@ -838,6 +848,7 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_nested_fields(data, prep.snapshot)
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
@@ -1037,6 +1048,9 @@ class AgenticSchemaAnalyzer:
             declared_reference_status=declared_status,
             taxonomy_status=taxonomy_status,
             vci=data.get("metadata", {}).get("vci") if isinstance(data.get("metadata"), dict) else None,
+            nested_fields=data.get("metadata", {}).get("nestedFields")
+            if isinstance(data.get("metadata"), dict)
+            else None,
             rdf_topology=data.get("metadata", {}).get("rdfTopology")
             if isinstance(data.get("metadata"), dict)
             else None,

@@ -212,6 +212,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 sample_limit_per_collection=int(analysis_options.get("sampleLimitPerCollection") or 0),
                 include_samples_in_snapshot=bool(analysis_options.get("includeSamplesInSnapshot") or False),
                 graph_scope=snap_graph_scope if isinstance(snap_graph_scope, str) and snap_graph_scope else None,
+                nested_field_depth=int(analysis_options.get("nestedFieldDepth") or 0),
             )
             return _build_response(
                 op=op,
@@ -263,6 +264,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 sample_limit_per_collection=sample_limit,
                 include_samples_in_snapshot=include_samples,
                 graph_scope=graph_scope,
+                nested_field_depth=int(analysis_options.get("nestedFieldDepth") or 0),
             )
 
             raw_strategy = analysis_options.get("entityStrategy")

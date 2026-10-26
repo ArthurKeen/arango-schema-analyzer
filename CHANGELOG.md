@@ -12,6 +12,76 @@
   Conceptual output is unchanged, and `auto` keeps emitting `LABEL`. `PhysicalMapping.aql_entity_match`
   compiles the style; the response, request and CSI schemas (both copies) admit it. The
   shape is shared with arango-query-core and arango-gql-gateway.
+- **CSI 1.1: `path` for values inside nested objects (#33).** A property mapping's
+  `field` stays one literal attribute name (`"address.city"` is a single top-level
+  attribute). The new `path` (one name per level, `["address", "city"]`) names a value
+  inside a nested object. A mapping carries at most one of the two. This matches the
+  reader side settled in arango-sparql-py#84.
+  - **Version.** The canonical CSI schema (`csi/v1/csi.schema.json` and its `docs/`
+    twin) admits `csiVersion` `"1"` and `"1.1"`, and refuses `path` in a `"1"`
+    document. `to_csi` writes `"1.1"` only when some mapping uses `path`, so readers
+    that accept only `"1"` keep working after an upgrade. `from_csi` accepts both and
+    round-trips `path`.
+  - **Strict entity property mappings.** Besides `field` / `path`, an entity property
+    mapping may hold only `type`, `indexed`, `unique`, `required`, `role`,
+    `sentinelValues`, `numericLike`, `sampleValues`, or an `x-` key. `to_csi` keeps any
+    other key (an LLM-written `description`, say) as `x-<key>` rather than drop it.
+    The rest of a CSI document keeps the additive rule.
+- **The analyzer can look inside nested objects (#33).** `analysisOptions.nestedFieldDepth`
+  (1-5, default 0 = off) walks the sampled documents into object-valued fields and
+  writes `path` for nested values. A dotted name the sample holds only as a top-level
+  attribute stays `field`, and takes no index information, because an ArangoDB index
+  on `a.b` means the nested attribute. The same rule also settles LLM-written
+  mappings.
+  - **Flagged, not guessed.** A collection that holds both shapes under one dotted
+    name leaves that name unmapped. The conceptual property is removed too, since a
+    reader would otherwise read it by its own name. The name is listed under
+    `metadata.nestedFields.conflicts`, and in CSI under
+    `provenance.unresolvedFieldLocations`.
+  - **Lists of objects** partway along a path are not walked yet; each one is listed
+    under `arraysSkipped`.
+  - **The depth is recorded on the snapshot**, so it is part of the fingerprint and
+    no cached analysis crosses the setting.
+  - **Masked for LLM egress.** Nested names are covered by `redaction.maskFieldNames`,
+    and per-type keys by `maskFieldValues`.
+  - **With depth 0, output is unchanged.**
+
+### Changed
+- **The tool contract accepts `path` in property mappings.** In both response-schema
+  copies and the LLM-output validator, `field` becomes "`field` or `path`, not both",
+  and `metadata.nestedFields` is declared.
+- **Exports carry `path`.**
+  - **OWL** (Turtle and JSON-LD) writes `phys:attributePath`, a JSON array such as
+    `["address", "city"]`, for a nested value, in place of `phys:attributeName`.
+    This is the annotation arango-sparql-py#84 reads; without either one, a reader
+    would fall back to the property's local name and find nothing. A one-level
+    `path` is written as `phys:attributeName`.
+  - **The SPARQL vocabulary export** (`export_mapping(target="sparql")`) adds `path`
+    to a datatype property that has one.
+- **`to_csi` never overwrites an `x-` key.** When a mapping already holds
+  `x-description`, an unknown `description` is kept as `x-x-description`.
+
+## 0.17.0 — 2026-10-26
+
+A minor version: the singularizer change below alters output, so consumers adopt it
+deliberately. arango-sparql-py's `[analyzer]` extra still admits ASA only below 0.16.0.
+
+### Changed
+- **The singularizer consults a dictionary.** The 0.16.0 rules failed wherever nobody had
+  listed the word: `cactus` -> `cactu`, `knives` -> `knive`, `analytics` -> `analytic`, and
+  `cacti`, `criteria`, `mice` unchanged. `csi.naming.singularize` (and `utils.singularize`,
+  which delegates to it) now checks the named lists, then a noun dictionary, then the
+  rules for words the dictionary does not know. The dictionary is
+  `schema_analyzer/csi/data/noun_lexicon.json.gz`, vendored byte for byte from
+  relational-schema-analyzer (generated from LemmInflect 0.2.3's noun lexicon; MIT notice in
+  `data/NOTICE-noun-lexicon.md`), so ASA gains no runtime dependency.
+  `naming.noun_lexicon()` exposes its SHA-256; r2g's tests check it equals RSA's. A word the
+  dictionary lists as its own noun stays as it is (`logistics`, `cactus`), and
+  `demographics` -> `demographic` is a named data-modelling decision. **Output change**:
+  CSI class names and FK/type-detection matching for collections named with `-ves`,
+  classical (`cacti`, `criteria`) or irregular plurals and such nouns. The vendored known
+  answers (now 142 pairs plus a `SINGULARS` group) are identical to RSA's.
+  (arango-solutions-org/r2g-arango#30)
 
 ## 0.16.0 — 2026-10-21
 

@@ -9,6 +9,7 @@ from schema_analyzer.csi.naming_known_answers import (
     INVARIANT_WORDS,
     PLURAL_SINGULAR_PAIRS,
     SINGULARIZE_ONLY,
+    SINGULARS,
 )
 from schema_analyzer.utils import singularize as utils_singularize
 
@@ -55,6 +56,22 @@ def test_a_singular_is_left_alone(singularize, plural, singular):
 def test_invariant_words_do_not_change(singularize, word):
     for spelling, _ in _spellings(word):
         assert singularize(spelling) == spelling
+
+
+@SINGULARIZERS
+@pytest.mark.parametrize("word", SINGULARS)
+def test_listed_singulars_are_left_alone(singularize, word):
+    for spelling, _ in _spellings(word):
+        assert singularize(spelling) == spelling
+
+
+def test_the_vendored_lexicon_loads():
+    from schema_analyzer.csi.naming import noun_lexicon
+
+    lexicon = noun_lexicon()
+    assert lexicon.plural_to_singular["knives"][0] == "knife"
+    assert "logistics" in lexicon.nouns
+    assert len(lexicon.sha256) == 64
 
 
 def test_utils_ignores_surrounding_whitespace():

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **The singularizer consults a dictionary.** The 0.16.0 rules failed wherever nobody had
+  listed the word: `cactus` -> `cactu`, `knives` -> `knive`, `analytics` -> `analytic`, and
+  `cacti`, `criteria`, `mice` unchanged. `csi.naming.singularize` (and `utils.singularize`,
+  which delegates to it) now checks the named lists, then a noun dictionary, then the
+  rules for words the dictionary does not know. The dictionary is
+  `schema_analyzer/csi/data/noun_lexicon.json.gz`, vendored byte for byte from
+  relational-schema-analyzer (generated from LemmInflect 0.2.3's noun lexicon; MIT notice in
+  `data/NOTICE-noun-lexicon.md`), so ASA gains no runtime dependency.
+  `naming.noun_lexicon()` exposes its SHA-256; r2g's tests check it equals RSA's. A word the
+  dictionary lists as its own noun stays as it is (`logistics`, `cactus`), and
+  `demographics` -> `demographic` is a named data-modelling decision. **Output change**:
+  CSI class names and FK/type-detection matching for collections named with `-ves`,
+  classical (`cacti`, `criteria`) or irregular plurals and such nouns. The vendored known
+  answers (now 142 pairs plus a `SINGULARS` group) are identical to RSA's.
+  (arango-solutions-org/r2g-arango#30)
+
 ## 0.16.0 — 2026-10-21
 
 A minor version: the singularizer change below alters output, and arango-sparql-py's

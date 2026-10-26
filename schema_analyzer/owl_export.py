@@ -163,6 +163,11 @@ def _datatype_properties(
             ptype = prop.get("type")
             entry["types"].add(_XSD_RANGE.get(ptype.strip().lower()) if isinstance(ptype, str) else None)
             spec = prop_map.get(raw)
+            if isinstance(spec, dict) and isinstance(spec.get("path"), list) and len(spec["path"]) > 1:
+                # A value inside a nested object (issue #33) has no single stored
+                # attribute name; phys:attributeName would name the wrong one.
+                entry["fields"].add(None)
+                continue
             field = spec.get("field") if isinstance(spec, dict) else None
             entry["fields"].add(field if isinstance(field, str) and field else raw)
 

@@ -194,6 +194,44 @@ mapping when a query is meant to run within one named graph.
 
 ---
 
+## Values inside nested objects (`path`, CSI 1.1)
+
+A property mapping says where a value is stored, in one of two ways:
+
+- **`field`** is one literal attribute name. `{"field": "address.city"}` means a
+  single top-level attribute whose name contains a dot. It never means `city`
+  inside `address`.
+- **`path`** is a list with one name per level: `{"path": ["address", "city"]}`
+  is `city` inside the object `address`. A segment may itself contain a dot and
+  is still one level.
+
+A mapping carries at most one of the two. With neither, the property name is the
+attribute.
+
+**Asking for nested values.** Pass `analysisOptions.nestedFieldDepth` (1-5; the
+default 0 keeps today's top-level-only output). The analyzer then walks the
+sampled documents into nested objects and decides, once at analysis time, whether
+each dotted name is nested (`path`) or literal (`field`). A transpiler never has
+to guess at query time.
+
+**What it will not guess.** Suppose one collection holds a top-level attribute
+named `address.city` and also a `city` inside `address`. The sample cannot say
+which one a query means, so neither gets a mapping. The name is listed under
+`metadata.nestedFields.conflicts`, and in a CSI document under
+`provenance.unresolvedFieldLocations`, for a person to settle. A list of objects
+partway along a path is not walked (lists are a later step); each one is listed
+under `metadata.nestedFields.arraysSkipped`.
+
+**CSI version.** A CSI document whose property mappings use `path` declares
+`csiVersion: "1.1"`. Every other document still declares `"1"`, so readers that
+accept only `"1"` keep working after an analyzer upgrade. A reader that sees
+`path` in a `"1"` document must refuse it. Entity property mappings in CSI are
+strict: besides `field` / `path` they may hold only `type`, `indexed`, `unique`,
+`required`, `role`, `sentinelValues`, `numericLike`, `sampleValues`, or a key
+starting with `x-`. The reader side of this format is arango-sparql-py#84.
+
+---
+
 ## Stability & versioning
 
 - The fields above are a contract: keys are added compatibly, not removed or

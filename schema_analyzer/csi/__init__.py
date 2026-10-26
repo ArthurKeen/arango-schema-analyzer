@@ -36,6 +36,25 @@ from ..defaults import FALLBACK_LIBRARY_VERSION
 from ..utils import normalize_analysis_dict
 
 CSI_VERSION = "1"
+#: The version a document declares when some property mapping uses ``path`` (a value
+#: inside a nested object). Readers of version 1 refuse it rather than read the wrong
+#: field, so :func:`to_csi` writes it only when ``path`` is actually used.
+CSI_VERSION_NESTED = "1.1"
+CSI_VERSIONS = (CSI_VERSION, CSI_VERSION_NESTED)
+
+#: Keys an entity property mapping may hold besides its location (``field`` / ``path``),
+#: plus any key starting with ``x-``. Everything else is refused by readers.
+PROPERTY_LOCATION_KEYS = ("field", "path")
+PROPERTY_DESCRIPTIVE_KEYS = (
+    "type",
+    "indexed",
+    "unique",
+    "required",
+    "role",
+    "sentinelValues",
+    "numericLike",
+    "sampleValues",
+)
 
 
 def _library_version() -> str:
@@ -143,7 +162,62 @@ def to_csi(
         from .naming import apply_owl_naming
 
         doc = apply_owl_naming(doc, entity_overrides=entity_overrides, property_overrides=property_overrides)
-    return _lift_attribute_references(doc)
+    doc = _lift_attribute_references(doc)
+    return _settle_property_mappings(doc, metadata if isinstance(metadata, dict) else {})
+
+
+def _uses_path(physical: Any) -> bool:
+    if not isinstance(physical, dict):
+        return False
+    for kind in ("entities", "relationships"):
+        specs = physical.get(kind)
+        for spec in specs.values() if isinstance(specs, dict) else []:
+            props = spec.get("properties") if isinstance(spec, dict) else None
+            for entry in props.values() if isinstance(props, dict) else []:
+                if isinstance(entry, dict) and "path" in entry:
+                    return True
+    return False
+
+
+def _settle_property_mappings(doc: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    """Make the document's property mappings valid CSI and pick its version (issue #33).
+
+    * ``csiVersion`` is ``"1.1"`` only when some property mapping uses ``path``, so an
+      analyzer upgrade never turns a document a version-1 reader can read into one it
+      refuses.
+    * An entity property mapping is strict: a key that is neither a location, a
+      descriptive key nor ``x-`` prefixed (an LLM-written ``description``, say) is kept
+      under ``x-<key>`` rather than dropped, so nothing is lost and readers accept it.
+    * Dotted names the analyzer left unmapped because a collection holds them in two
+      shapes travel in ``provenance.unresolvedFieldLocations`` for a person to settle.
+    """
+    physical = doc.get("arangoPhysicalMapping")
+    entities = physical.get("entities") if isinstance(physical, dict) else None
+    allowed = set(PROPERTY_LOCATION_KEYS) | set(PROPERTY_DESCRIPTIVE_KEYS)
+    needs_copy = isinstance(entities, dict) and any(
+        isinstance(entry, dict) and any(k not in allowed and not k.startswith("x-") for k in entry)
+        for spec in entities.values()
+        if isinstance(spec, dict) and isinstance(spec.get("properties"), dict)
+        for entry in spec["properties"].values()
+    )
+    raw_nested = metadata.get("nestedFields")
+    nested: dict[str, Any] = raw_nested if isinstance(raw_nested, dict) else {}
+    raw_conflicts = nested.get("conflicts")
+    conflicts: list[Any] = raw_conflicts if isinstance(raw_conflicts, list) else []
+    if needs_copy or conflicts:
+        doc = copy.deepcopy(doc)  # never mutate the caller's analysis
+    if needs_copy:
+        for spec in doc["arangoPhysicalMapping"]["entities"].values():
+            props = spec.get("properties") if isinstance(spec, dict) else None
+            if not isinstance(props, dict):
+                continue
+            for name, entry in list(props.items()):
+                if isinstance(entry, dict):
+                    props[name] = {(k if k in allowed or k.startswith("x-") else f"x-{k}"): v for k, v in entry.items()}
+    if conflicts:
+        doc.setdefault("provenance", {})["unresolvedFieldLocations"] = conflicts
+    doc["csiVersion"] = CSI_VERSION_NESTED if _uses_path(doc.get("arangoPhysicalMapping")) else CSI_VERSION
+    return doc
 
 
 #: Keys of a ``FOREIGN_KEY`` physical mapping carried onto the conceptual relationship.
@@ -215,6 +289,10 @@ def from_csi(csi: dict[str, Any]) -> dict[str, Any]:
     """Adapt a CSI v1 document into the ``{conceptualSchema, physicalMapping,
     metadata}`` shape this library's consumers (diff, gold, quality, exports)
     accept. Provenance is folded into ``metadata`` (confidence / timestamp).
+
+    Accepts ``csiVersion`` ``"1"`` and ``"1.1"``; a property mapping's ``path`` (a value
+    inside a nested object) is carried through unchanged, so ``to_csi`` → ``from_csi``
+    round-trips it.
     """
     conceptual = csi.get("conceptualModel")
     physical = csi.get("arangoPhysicalMapping")

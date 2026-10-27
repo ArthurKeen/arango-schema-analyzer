@@ -73,6 +73,7 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                             "typeField": {"type": "string"},
                             "typeValue": {"type": "string"},
                             "labelsField": {"type": "string"},
+                            "labelValue": {"type": "string"},
                             "aliases": {"type": "array", "items": {"type": "string"}},
                             "indexes": {
                                 "type": "array",

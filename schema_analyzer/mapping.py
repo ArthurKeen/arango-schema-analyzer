@@ -106,7 +106,7 @@ class PhysicalMapping:
             # Labels held in an array field of a shared collection (a node may carry several).
             collection_name = mapping.get("collectionName")
             labels_field = mapping.get("labelsField")
-            label = mapping.get("typeValue") or entity_type
+            label = mapping.get("labelValue") or entity_type
             if not (collection_name and labels_field):
                 raise SchemaAnalyzerError(
                     f"LABELS mapping requires collectionName, labelsField for: {entity_type}",

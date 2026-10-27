@@ -99,7 +99,7 @@ Surface `error.message` as a diagnostic; do not synthesize a fallback query.
 1. **`?s rdf:type :User`** → `classes[].physical`. Iterate the matching
    collection; for a `LABEL` style add the `typeField == typeValue` filter
    (mirrors the Cypher index above), and for a `LABELS` style the
-   `typeValue IN doc[labelsField]` filter.
+   `labelValue IN doc[labelsField]` filter (`labelValue` defaults to the class name).
 2. **`?s :wrote ?o`** (predicate in `objectProperties`) → a graph traversal over
    `physical.edgeCollectionName`, from the `domain` class to the `range` class.
    `GENERIC_WITH_TYPE` edges add a `typeField == typeValue` filter on the edge.
@@ -249,7 +249,7 @@ starting with `x-`. The reader side of this format is arango-sparql-py#84.
 - `style` values are the four mapping styles in PRD §3.3
   (`COLLECTION`, `LABEL`, `DEDICATED_COLLECTION`, `GENERIC_WITH_TYPE`), plus the
   opt-in entity style `LABELS` (`analysisOptions.entityStrategy: "labels"`): the
-  node's labels are a list in `labelsField`, and it matches when `typeValue` is one
+  node's labels are a list in `labelsField`, and it matches when `labelValue` is one
   of them (`FILTER @label IN n[@labelsField]`). A node carrying several labels
   matches each. The additive `TRIPLE` / VCI annotations (PRD §6.1) appear
   alongside, never replacing the native `style`.

@@ -48,6 +48,7 @@ def test_labels_strategy_live(fresh_database):
     analysis = resp["result"]["analysis"]
     entities = analysis["physicalMapping"]["entities"]
     assert {(e["style"], e["labelsField"]) for e in entities.values()} == {("LABELS", "labels")}
+    assert {name: e["labelValue"] for name, e in entities.items()} == {"Account": "Account", "Order": "Order"}
 
     pm = PhysicalMapping.from_json(analysis["physicalMapping"])
     counts = {}

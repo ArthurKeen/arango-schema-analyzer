@@ -397,7 +397,7 @@ def infer_baseline_from_snapshot(
     When ``multi_label`` is True, a collection whose type field holds label arrays
     (nodes with more than one label were sampled) maps each primary label to a
     ``LABELS``-style entity — ``{"style": "LABELS", "collectionName", "labelsField",
-    "typeValue"}``, matched as ``typeValue IN doc[labelsField]`` — instead of
+    "labelValue"}``, matched as ``labelValue IN doc[labelsField]`` — instead of
     ``LABEL``, so a node carrying several labels matches each of them. Conceptual
     output (aliases, subtype proposals, facets) is unchanged. Default (False)
     preserves today's ``LABEL`` output.
@@ -488,7 +488,9 @@ def infer_baseline_from_snapshot(
                         "style": "LABELS",
                         "collectionName": collection_name,
                         "labelsField": type_field,
-                        "typeValue": raw,
+                        # labelValue, as in arango-query-core's MULTI_LABEL: the two
+                        # styles share one field set (#36).
+                        "labelValue": raw,
                     }
                 # PascalCase collapses separators (FIN_METRIC → FINMETRIC),
                 # so the raw discriminator value — the label a Cypher author

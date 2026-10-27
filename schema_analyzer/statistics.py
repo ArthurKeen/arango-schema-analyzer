@@ -130,7 +130,7 @@ def compute_statistics(
             # A node may carry several labels: count the documents whose label array
             # holds this one, as PhysicalMapping.aql_entity_match matches them.
             est = _safe_filtered_count(
-                db, col, ent_mapping.get("labelsField"), ent_mapping.get("typeValue") or ent_name, in_array=True
+                db, col, ent_mapping.get("labelsField"), ent_mapping.get("labelValue") or ent_name, in_array=True
             )
         else:
             est = counts.get(col)

@@ -83,6 +83,7 @@
               "typeField": { "type": "string" },
               "typeValue": { "type": "string" },
               "labelsField": { "type": "string" },
+              "labelValue": { "type": "string" },
               "properties": {
                 "type": "object",
                 "description": "Conceptual property name -> where its value is stored.",

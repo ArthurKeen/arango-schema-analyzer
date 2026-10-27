@@ -61,3 +61,20 @@ def test_aql_entity_match_labels():
     out = pm.aql_entity_match(variable="n", entity_type="Customer")
     assert out["query"] == "FOR n IN @@collection FILTER @label IN n[@labelsField]"
     assert out["bind_vars"] == {"@collection": "nodes", "labelsField": "labels", "label": "Customer"}
+
+
+def test_aql_entity_match_labels_reads_label_value():
+    # The stored label can differ from the entity key (FIN_ACCOUNT -> FinAccount); it is in
+    # labelValue, as for arango-query-core's MULTI_LABEL (#36).
+    pm = PhysicalMapping(
+        entities={
+            "FinAccount": {
+                "style": "LABELS",
+                "collectionName": "nodes",
+                "labelsField": "labels",
+                "labelValue": "FIN_ACCOUNT",
+            }
+        }
+    )
+    out = pm.aql_entity_match(variable="n", entity_type="FinAccount")
+    assert out["bind_vars"]["label"] == "FIN_ACCOUNT"

@@ -184,16 +184,25 @@ def test_compute_statistics_label_style_entity_uses_filtered_count() -> None:
 def test_compute_statistics_labels_style_entity_counts_its_label_only() -> None:
     # A LABELS entity shares its collection with other labels; the collection total
     # (45 here) would overstate it.
-    db = _FakeDB({"nodes": 45}, {("nodes", "labels", "Account"): 25})
+    # The stored label (labelValue, "FIN_ACCOUNT") differs from the entity key, so the
+    # count proves labelValue is what is counted; Order has none and falls back to its key.
+    db = _FakeDB({"nodes": 45}, {("nodes", "labels", "FIN_ACCOUNT"): 25, ("nodes", "labels", "Order"): 15})
     physical_mapping = {
         "entities": {
-            "Account": {"style": "LABELS", "collectionName": "nodes", "labelsField": "labels", "typeValue": "Account"}
+            "FinAccount": {
+                "style": "LABELS",
+                "collectionName": "nodes",
+                "labelsField": "labels",
+                "labelValue": "FIN_ACCOUNT",
+            },
+            "Order": {"style": "LABELS", "collectionName": "nodes", "labelsField": "labels"},
         },
         "relationships": {},
     }
     out = compute_statistics(db, {"collections": [{"name": "nodes", "type": "document"}]}, physical_mapping, {})
     assert out is not None
-    assert out["entities"]["Account"]["estimated_count"] == 25
+    assert out["entities"]["FinAccount"]["estimated_count"] == 25
+    assert out["entities"]["Order"]["estimated_count"] == 15
     assert any("@val IN d[@field]" in q for q, _ in db.aql.calls)
 
 

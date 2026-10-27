@@ -246,6 +246,7 @@ def export_conceptual_model_as_owl_turtle(
         "typeField",
         "typeValue",
         "labelsField",
+        "labelValue",
         "edgeCollectionName",
         "attributeName",
         "attributePath",
@@ -277,8 +278,10 @@ def export_conceptual_model_as_owl_turtle(
                 if mapping.get("typeValue"):
                     lines.append(f'{iri} phys:typeValue "{_ttl_escape(str(mapping["typeValue"]))}" .')
                 if mapping.get("labelsField"):
-                    # LABELS style: typeValue is one of the labels listed in this field.
+                    # LABELS style: labelValue is one of the labels listed in this field.
                     lines.append(f'{iri} phys:labelsField "{_ttl_escape(str(mapping["labelsField"]))}" .')
+                if mapping.get("labelValue"):
+                    lines.append(f'{iri} phys:labelValue "{_ttl_escape(str(mapping["labelValue"]))}" .')
             lines.append("")
 
     # Class hierarchy — shard families plus discovered abstractions (rdfs:subClassOf)
@@ -416,6 +419,7 @@ def export_conceptual_model_as_jsonld(
                 ("typeField", "typeField"),
                 ("typeValue", "typeValue"),
                 ("labelsField", "labelsField"),
+                ("labelValue", "labelValue"),
             ):
                 if mapping.get(mkey):
                     node[f"phys:{phys_key}"] = str(mapping[mkey])

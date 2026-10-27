@@ -68,6 +68,7 @@ The system must produce a **conceptual → physical mapping** describing how eac
 |---|---|---|
 | `COLLECTION` | Entity | One document collection per entity type |
 | `LABEL` | Entity | Shared collection filtered by `typeField == typeValue` |
+| `LABELS` | Entity | Shared collection whose `labelsField` holds a list of labels; matches when `labelValue` (default: the entity key) is one of them (`labelValue IN doc[labelsField]`), so a node with several labels matches each. Opt-in via `entityStrategy: "labels"`. |
 | `DEDICATED_COLLECTION` | Relationship | One edge collection per relationship type |
 | `GENERIC_WITH_TYPE` | Relationship | Shared edge collection filtered by `typeField == typeValue` |
 | `FOREIGN_KEY` | Relationship | Relationship carried by a scalar attribute on the source document that references a target document's key (SQL-style, never enforced by ArangoDB); compiled as a keyed document lookup, not an edge traversal. |
@@ -88,6 +89,23 @@ mapping's `aliases` list and copied into the transpiler-facing blocks of the
 writes the real data value resolves the entity without downstream
 normalization heuristics (see
 `docs/cypher-vocabulary-fidelity-bug-report.md` issue #1).
+
+**`LABELS` style (opt-in) — _shipped_ (0.18.0).** `analysisOptions.entityStrategy:
+"labels"` (Python `entity_strategy="labels"`) behaves as `auto`, except that a
+collection whose type field holds label arrays, with sampled nodes carrying more than
+one label, maps each primary label to `{"style": "LABELS", "collectionName",
+"labelsField", "labelValue"}` instead of `LABEL`. A collection whose arrays all hold
+one label stays `LABEL`. `LABELS` is an ordinary label; arango-query-core's
+`MULTI_LABEL` is a parent type over the same storage, and the two share one field set
+(`labelsField` + `labelValue`, #36). The conceptual output is the same as under `auto`,
+and `auto` keeps emitting `LABEL`. Like `collection`, the strategy governs baseline
+inference (no LLM, or LLM fallback). `metadata.statistics` counts each `LABELS` entity
+by its own label; the SPARQL vocabulary export, the Cypher resolution index and the OWL
+export (`phys:labelsField`, `phys:labelValue`) carry both fields. The shape is shared
+with arango-query-core and arango-gql-gateway. Not yet covered: taxonomy discovery and
+`aql_class_extent` key on `LABEL`. **Implementation**: `baseline.py`
+(`infer_baseline_from_snapshot(multi_label=True)`), `mapping.py` (`aql_entity_match`),
+`statistics.py`, `exports.py::_ENTITY_RESOLUTION_KEYS`, `owl_export.py`.
 
 **Implementation**: `PhysicalMapping` dataclass in `mapping.py`, with `aql_entity_match()` and `aql_relationship_traversal()` helper methods that produce injection-safe AQL fragments; alias derivation in `baseline.py` (LABEL branch of `infer_baseline_from_snapshot`), export propagation via `exports.py::_ENTITY_RESOLUTION_KEYS`.
 

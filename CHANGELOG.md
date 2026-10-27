@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.18.0 — 2026-10-27
+
+A minor version: CSI gains version `"1.1"` (`path` for a value inside a nested object)
+and CSI property mappings become strict, and the opt-in `LABELS` entity style is new.
+With default options (`nestedFieldDepth` 0, `entityStrategy` `auto`) analysis output is
+unchanged, and `to_csi` still writes `"1"`. The one default-path change: `to_csi`
+renames a property-mapping key outside the strict list to `x-<key>` instead of passing
+it through. arango-sparql-py's `[analyzer]` extra still admits ASA only below 0.16.0.
 
 ### Added
 - **`entityStrategy: "labels"` maps label arrays to a `LABELS` entity style.** Opt-in
